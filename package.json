@@ -1,0 +1,36 @@
+{
+  "name": "sus-cat",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.20.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "check": "tsc --noEmit",
+    "register": "tsx src/scripts/register-commands.ts",
+    "register:prod": "node dist/scripts/register-commands.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node dist/scripts/migrate.js",
+    "db:migrate:dev": "tsx src/scripts/migrate.ts",
+    "db:studio": "drizzle-kit studio",
+    "test": "vitest run"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "discord.js": "^14.27.0",
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "0.45.2",
+    "postgres": "3.4.9"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "drizzle-kit": "0.31.10",
+    "tsx": "^4.23.11",
+    "typescript": "^7.0.2",
+    "vitest": "4.1.10"
+  }
+}

@@ -1,12 +1,12 @@
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { fileURLToPath } from "node:url";
 
-import { requiredVariable } from "../config/environment.js";
-import { inspectDeploymentEnvironment } from "../config/deployment-environment.js";
-import { createDatabase } from "../database/client.js";
-import { logDeploymentEnvironment } from "../shared/log-deployment-environment.js";
-import { logger } from "../shared/logger.js";
-import { toError } from "../shared/to-error.js";
+import { requiredVariable } from "../core/environment/environment.js";
+import { inspectDeploymentEnvironment } from "../core/environment/deployment-environment.js";
+import { createDatabase } from "../core/database/client.js";
+import { logDeploymentEnvironment } from "../core/shared/log-deployment-environment.js";
+import { logger } from "../core/shared/logger.js";
+import { toError } from "../core/shared/to-error.js";
 
 async function runMigrations(): Promise<void> {
   logDeploymentEnvironment(inspectDeploymentEnvironment());

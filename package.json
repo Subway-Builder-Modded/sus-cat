@@ -16,7 +16,9 @@
     "db:migrate": "node dist/scripts/migrate.js",
     "db:migrate:dev": "tsx src/scripts/migrate.ts",
     "db:studio": "drizzle-kit studio",
-    "test": "vitest run"
+    "test": "vitest run",
+    "doctor": "tsx src/scripts/doctor.ts",
+    "doctor:prod": "node dist/scripts/doctor.js"
   },
   "engines": {
     "node": ">=24.14"

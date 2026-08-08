@@ -1,0 +1,17 @@
+import { describe, expect, it } from "vitest";
+
+import { componentId, parseComponentId } from "../src/core/interactions/custom-id.js";
+import { moderationModule } from "../src/modules/moderation/index.js";
+
+describe("module component routing", () => {
+  it("round-trips structured safe routes", () => {
+    const id = componentId("module", "moderation", "case_evidence", "actor", "case");
+    expect(parseComponentId(id)).toEqual({ namespace: "module", owner: "moderation", action: "case_evidence", parts: ["actor", "case"] });
+    expect(moderationModule.featureForComponent?.("case_evidence")).toBe("evidence");
+  });
+
+  it("rejects unsafe and oversized IDs", () => {
+    expect(() => componentId("module", "bad owner", "action")).toThrow("Unsafe");
+    expect(() => componentId("module", "owner", "action", "x".repeat(100))).toThrow("too long");
+  });
+});

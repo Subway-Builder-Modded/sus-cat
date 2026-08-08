@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatDuration, MAX_TIMEOUT_MS, parseDuration } from "../src/moderation/utils/duration.js";
+import { formatDuration, MAX_TIMEOUT_MS, parseDuration } from "../src/modules/moderation/utils/duration.js";
 
 describe("duration parser", () => {
   it("parses compound, human-friendly durations", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { readSendMessagesState } from "../src/moderation/utils/lock-state.js";
+import { readSendMessagesState } from "../src/modules/moderation/utils/lock-state.js";
 
 const values = (result: boolean) => ({ has: () => result });
 

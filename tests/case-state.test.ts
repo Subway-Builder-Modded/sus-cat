@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { canTransitionCase } from "../src/moderation/domain/case-state.js";
+import { canTransitionCase } from "../src/modules/moderation/domain/case-state.js";
 
 describe("case state transitions", () => {
   it("allows normal application and reversal", () => {

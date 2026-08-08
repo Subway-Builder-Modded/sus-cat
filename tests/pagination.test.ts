@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizePage } from "../src/moderation/utils/pagination.js";
+import { normalizePage } from "../src/modules/moderation/utils/pagination.js";
 
 describe("pagination", () => {
   it("clamps stale page requests", () => {

@@ -1,6 +1,6 @@
-import { inspectDeploymentEnvironment } from "../config/deployment-environment.js";
-import { logDeploymentEnvironment } from "../shared/log-deployment-environment.js";
-import { logger } from "../shared/logger.js";
+import { inspectDeploymentEnvironment } from "../core/environment/deployment-environment.js";
+import { logDeploymentEnvironment } from "../core/shared/log-deployment-environment.js";
+import { logger } from "../core/shared/logger.js";
 
 function checkEnvironment(): void {
   const report = inspectDeploymentEnvironment();

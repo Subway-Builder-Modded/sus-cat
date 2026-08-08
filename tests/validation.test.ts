@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseSnowflake, validateReason } from "../src/moderation/utils/validation.js";
+import { parseSnowflake, validateReason } from "../src/modules/moderation/utils/validation.js";
 
 describe("moderation input validation", () => {
   it("trims and accepts meaningful reasons", () => expect(validateReason("  repeated spam  ")).toBe("repeated spam"));

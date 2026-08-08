@@ -12,7 +12,7 @@ The user context actions **Moderation History** and **Quick Moderate** open the 
 
 Channel tools are `/purge`, `/slowmode`, `/lock`, and `/unlock`. Purge reports messages skipped because of Discord's 14-day bulk-delete limit. Locks only change the `Send Messages` bit on the everyone overwrite and persist its previous tri-state value for exact restoration.
 
-`/mod dashboard` shows recent activity and configuration health. `/mod active` lists active timeouts and temporary bans. `/mod config` configures log channels, private audit channels, user DMs, rules links, staff roles, purge confirmation thresholds, notes, temporary bans, and persistent case controls. Every configuration change is audited.
+`/mod dashboard` shows recent activity and configuration health. `/mod active` lists active timeouts and temporary bans. Administrators use the generic `/config` dashboard to manage moderation features, log channels, user DMs, rules links, staff roles, purge thresholds, and case controls. Every change is validated and audited.
 
 ## Case lifecycle and auditability
 
@@ -26,13 +26,13 @@ Temporary bans and timeout case expiration use persisted scheduled actions. The 
 
 Discord handlers contain presentation and input extraction only. `ModerationService` and `ChannelModerationService` own business rules and Discord operations. Repositories own every Drizzle query. The centralized capability service combines configured staff roles, Discord permissions, owner/admin status, and target hierarchy checks.
 
-Component IDs use a validated `mod:<action>:<ids>` namespace. Ephemeral confirmations store opaque random tokens, expire after two minutes, are bound to the initiating moderator, and are single-use. Persistent case controls contain only stable IDs and re-check guild, capability, hierarchy, and current database state on every click.
+Component IDs use the validated `module:moderation:<action>:<ids>` route format. The core router rechecks setup, module, and feature state before delegating. Ephemeral confirmations store opaque random tokens, expire after two minutes, are bound to the initiating moderator, and are single-use. Persistent case controls contain only stable IDs and re-check guild, capability, hierarchy, and current database state on every click.
 
 User-provided content is sent with mentions disabled. Discord API failures are mapped to safe messages with correlation IDs while structured internal logs retain operational context without tokens, credentials, or evidence content.
 
 ## Database operations
 
-Production PostgreSQL is a separate Railway service. The bot receives it through the `DATABASE_URL` reference variable; no individual host, username, password, or public database endpoint is required. Railway runs committed Drizzle migrations in the pre-deploy phase before starting new bot code. See [Railway deployment](DEPLOYMENT.md) for the complete dashboard workflow and backup procedure.
+Production PostgreSQL is a separate Railway service. The bot receives it through the `DATABASE_URL` reference variable; no individual host, username, password, or public database endpoint is required. Railway runs committed Drizzle migrations in the pre-deploy phase before starting new bot code. See [Railway deployment](deployment.md) for the complete dashboard workflow and backup procedure.
 
 The schema includes cases, per-guild counters, revisions, evidence, notes and note revisions, audit events, guild configuration, lock restoration state, scheduled actions, and DM attempts. Discord snowflakes are stored as strings to avoid numeric precision loss. No persistent moderation state uses Railway's ephemeral application filesystem.
 
@@ -46,7 +46,7 @@ The schema includes cases, per-guild counters, revisions, evidence, notes and no
 ## Manual smoke test
 
 1. Deploy to a Railway test environment with `DISCORD_GUILD_ID` set; confirm the Railway pre-deploy migration and command registration succeed.
-2. Configure mod/audit channels and a staff role with `/mod config`.
+2. Run `/setup`, enable Moderation, choose its features, and configure log channels and staff roles.
 3. Warn a test member and verify the case, DM attempt, dashboard, and mod-log embed.
 4. Open **Quick Moderate**, submit a timeout modal, and verify history pagination and active punishments.
 5. Start a ban, verify cancel does nothing, then confirm a temporary ban and verify automatic unban/expiration.

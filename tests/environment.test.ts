@@ -1,8 +1,8 @@
 import { populate } from "dotenv";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { inspectDeploymentEnvironment } from "../src/config/deployment-environment.js";
-import { loadEnvironment, requiredVariable } from "../src/config/environment.js";
+import { inspectDeploymentEnvironment } from "../src/core/environment/deployment-environment.js";
+import { loadEnvironment, requiredVariable } from "../src/core/environment/environment.js";
 
 const originalDatabaseUrl = process.env.DATABASE_URL;
 

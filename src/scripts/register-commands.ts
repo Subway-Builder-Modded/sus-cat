@@ -1,10 +1,10 @@
 import { REST, Routes } from "discord.js";
 
-import { createBotClient } from "../bot/create-client.js";
-import { loadCommands } from "../commands/load-commands.js";
-import { loadEnvironment, requiredVariable } from "../config/environment.js";
-import { logger } from "../shared/logger.js";
-import { toError } from "../shared/to-error.js";
+import { createBotClient } from "../core/bot/create-client.js";
+import { loadCommands } from "../core/commands/load-commands.js";
+import { loadEnvironment, requiredVariable } from "../core/environment/environment.js";
+import { logger } from "../core/shared/logger.js";
+import { toError } from "../core/shared/to-error.js";
 
 async function registerCommands(): Promise<void> {
   logger.info("[discord] Registering production commands");

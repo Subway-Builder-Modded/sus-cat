@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createBotClient } from "../src/bot/create-client.js";
-import type { BotClient } from "../src/bot/bot-client.js";
-import { loadCommands } from "../src/commands/load-commands.js";
+import { createBotClient } from "../src/core/bot/create-client.js";
+import type { BotClient } from "../src/core/bot/bot-client.js";
+import { loadCommands } from "../src/core/commands/load-commands.js";
 
 interface CommandOptionNode {
   readonly name: string;

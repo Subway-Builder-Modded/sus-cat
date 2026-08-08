@@ -1,8 +1,8 @@
 import { PermissionFlagsBits } from "discord.js";
 import { describe, expect, it } from "vitest";
 
-import type { ModerationConfig } from "../src/database/schema.js";
-import { hasCapability } from "../src/moderation/permissions/capabilities.js";
+import type { ModerationConfig } from "../src/modules/moderation/database/schema.js";
+import { hasCapability } from "../src/modules/moderation/permissions/capabilities.js";
 
 const config = { staffRoleIds: ["staff"] } as ModerationConfig;
 

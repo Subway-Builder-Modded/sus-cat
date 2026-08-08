@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { validateTargetHierarchy } from "../src/moderation/permissions/hierarchy.js";
+import { validateTargetHierarchy } from "../src/modules/moderation/permissions/hierarchy.js";
 
 function member(id: string, position: number, ownerId = "owner") {
   return { id, guild: { ownerId }, roles: { highest: { comparePositionTo: (other: { position: number }) => position - other.position, position } } };

@@ -8,8 +8,8 @@ export default {
   data: new SlashCommandBuilder().setName("slowmode").setDescription("Set or remove channel slowmode")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addIntegerOption((option) => option.setName("seconds").setDescription("0 disables slowmode").setRequired(true).setMinValue(0).setMaxValue(21_600))
-    .addChannelOption((option) => option.setName("channel").setDescription("Channel; defaults to current").addChannelTypes(ChannelType.GuildText))
-    .addStringOption((option) => option.setName("reason").setDescription("Reason").setRequired(true).setMaxLength(1_000)),
+    .addStringOption((option) => option.setName("reason").setDescription("Reason").setRequired(true).setMaxLength(1_000))
+    .addChannelOption((option) => option.setName("channel").setDescription("Channel; defaults to current").addChannelTypes(ChannelType.GuildText)),
   async execute(client, interaction) {
     if (!interaction.isChatInputCommand()) return;
     const { guild, actor } = requireGuildInteraction(interaction);

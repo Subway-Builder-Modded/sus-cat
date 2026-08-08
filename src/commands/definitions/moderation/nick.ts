@@ -7,8 +7,8 @@ export default {
   data: new SlashCommandBuilder().setName("nick").setDescription("Set or reset a member nickname")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageNicknames)
     .addUserOption((option) => option.setName("user").setDescription("Member").setRequired(true))
-    .addStringOption((option) => option.setName("nickname").setDescription("New nickname; omit to reset").setMaxLength(32))
-    .addStringOption((option) => option.setName("reason").setDescription("Reason").setMaxLength(1_000).setRequired(true)),
+    .addStringOption((option) => option.setName("reason").setDescription("Reason").setMaxLength(1_000).setRequired(true))
+    .addStringOption((option) => option.setName("nickname").setDescription("New nickname; omit to reset").setMaxLength(32)),
   async execute(client, interaction) {
     if (!interaction.isChatInputCommand()) return;
     const { guild, actor } = requireGuildInteraction(interaction);

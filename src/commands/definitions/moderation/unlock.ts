@@ -7,8 +7,8 @@ import { successEmbed } from "../../../moderation/ui/responses.js";
 export default {
   data: new SlashCommandBuilder().setName("unlock").setDescription("Restore a bot-managed channel lock")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
-    .addChannelOption((option) => option.setName("channel").setDescription("Channel; defaults to current").addChannelTypes(ChannelType.GuildText))
-    .addStringOption((option) => option.setName("reason").setDescription("Reason").setRequired(true).setMaxLength(1_000)),
+    .addStringOption((option) => option.setName("reason").setDescription("Reason").setRequired(true).setMaxLength(1_000))
+    .addChannelOption((option) => option.setName("channel").setDescription("Channel; defaults to current").addChannelTypes(ChannelType.GuildText)),
   async execute(client, interaction) {
     if (!interaction.isChatInputCommand()) return;
     const { guild, actor } = requireGuildInteraction(interaction);

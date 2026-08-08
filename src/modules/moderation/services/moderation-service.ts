@@ -1,6 +1,5 @@
 import type { Guild, GuildMember, User } from "discord.js";
 
-import { logger } from "../../../core/shared/logger.js";
 import { toError } from "../../../core/shared/to-error.js";
 import type { ModerationCaseEntry, ModerationCustomCaseType, ModerationUserCase } from "../database/schema.js";
 import type { ModerationAction } from "../domain/types.js";
@@ -8,6 +7,7 @@ import { validateTargetHierarchy } from "../permissions/hierarchy.js";
 import type { CaseRepository } from "../repositories/case-repository.js";
 import type { ModerationSettings } from "../config/settings.js";
 import { buildActionCard } from "../ui/actions/action-card.js";
+import { publishAuditLog } from "../ui/actions/audit-log-publisher.js";
 import { sendActionNotice } from "../ui/actions/dm-notice.js";
 import { validateReason } from "../utils/validation.js";
 
@@ -103,14 +103,6 @@ export class ModerationService {
   }
 
   private async publish(guild: Guild, action: ModerationAction | "nickname", actor: GuildMember, target: User, details: Omit<Parameters<typeof buildActionCard>[0], "action" | "actor" | "target">): Promise<void> {
-    if (!await this.configs.feature(guild.id, "moderation-log")) return;
-    const config = await this.configs.get(guild.id);
-    if (!config.moderationLogChannelId) return;
-    try {
-      const channel = await guild.channels.fetch(config.moderationLogChannelId);
-      if (channel?.isSendable()) await channel.send({ embeds: [buildActionCard({ ...details, action, actor, target })], allowedMentions: { parse: [] } });
-    } catch (error: unknown) {
-      logger.warn("Unable to publish moderation log", { guildId: guild.id, action, error: toError(error).message });
-    }
+    await publishAuditLog(this.configs, guild, { ...details, action, actor, target });
   }
 }

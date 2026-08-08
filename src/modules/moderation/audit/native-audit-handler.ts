@@ -14,6 +14,7 @@ export default {
   async execute(client, entry, guild) {
     try {
       if (await client.platform.settings.setupStatus(guild.id) !== "configured" || !await client.platform.settings.isFeatureEnabled(guild.id, "moderation", "audit-log")) return;
+      if (entry.executorId === client.user?.id) return; // Bot-originated actions are published directly with richer context.
       const config = await client.moderation!.configs.get(guild.id);
       if (!shouldIncludeAuditEvent(config.auditScope, entry.action)) return;
       const changes = Object.fromEntries((entry.changes ?? []).map((change) => [change.key, { old: change.old ?? null, new: change.new ?? null }]));

@@ -1,6 +1,6 @@
 # Moderation system
 
-Moderation is a guild-scoped module made of independently toggleable Bans, Cases, Evidence, Kicks, Nickname, Purge, Slowmode, Sudo, Timeouts, Warnings, User Management, Audit Log, Channel Locks, User Notifications, and Moderation Log features. `/moderation config` opens its complete dashboard; `/config` remains the bot-wide entry point.
+Moderation is a guild-scoped module made of independently toggleable Bans, Cases, Evidence, Kicks, Nickname, Purge, Slowmode, Sudo, Timeouts, Warnings, User Management, Audit Log, Channel Locks, and User Notifications features. `/moderation config` opens its complete dashboard; `/config` remains the bot-wide entry point.
 
 ## Authorization
 
@@ -30,7 +30,7 @@ One action presentation map defines labels, unique emoji, colors, past-tense tex
 
 ## Audit, purge, and operations
 
-Moderation Log publishes polished bot-action cards. Audit Log stores private administrative records and can run in Moderation Only or Full Server Management scope. Native Discord audit events arrive through the gateway, are filtered before database work, deduplicated by audit entry ID, rendered as human-readable changes, and isolated by guild.
+Audit Log is the only logging feature and uses one private channel. **Moderation Only** publishes polished bot-action cards and external Discord moderation events. **Full Server Management** includes those events plus meaningful server administration changes. Native Discord audit entries arrive through the gateway, are filtered before database work, deduplicated by entry ID, rendered as human-readable changes, and isolated by guild. Bot-originated native entries are skipped because the bot publishes those actions directly with richer context.
 
 Purge supports current, selected, or all accessible text-channel scope with author, bot, link, attachment, and text filters. Scans and channel traversal are bounded by configuration, significant results receive a preview and single-use confirmation, deletion runs in API-sized batches, and the summary distinguishes deleted, too-old, and failed messages.
 

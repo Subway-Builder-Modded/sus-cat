@@ -14,12 +14,21 @@ export async function configurationHome(settings: GuildConfigService, modules: M
 
 export async function moduleConfigurationView(settings: GuildConfigService, modules: ModuleRegistry, guildId: string, moduleId: string, actorId: string) {
   const module = modules.require(moduleId);
-  if (module.configurationView) return module.configurationView(settings, guildId, actorId);
   const enabled = await settings.isModuleEnabled(guildId, moduleId);
+  if (!enabled) return {
+    embeds: [new EmbedBuilder().setColor(ui.colors.neutral).setTitle(`${module.manifest.icon} ${module.manifest.name}`).setDescription("This module is disabled. Enable it to configure its features and settings.")],
+    components: [new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(componentId("core", "config", "toggle", actorId, moduleId)).setLabel("Enable Module").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(componentId("core", "config", "home", actorId)).setLabel("Back").setStyle(ButtonStyle.Secondary),
+    )],
+  };
+  if (module.configurationView) return module.configurationView(settings, guildId, actorId);
   const config = await settings.getModuleConfig(guildId, moduleId);
   const featureLines = [];
   for (const feature of module.manifest.features) featureLines.push(`${await settings.isFeatureEnabled(guildId, moduleId, feature.id) ? ui.icons.enabled : ui.icons.disabled} ${feature.name}`);
-  const configuration = module.manifest.config.map((item) => `**${item.label}:** ${item.type === "channel" || item.type === "category" ? channelLabel(config[item.key]) : item.type === "role-list" ? roleListLabel(config[item.key]) : String(config[item.key] ?? "Not configured")}`).join("\n") || "No module settings.";
+  const definitions = [];
+  for (const definition of module.manifest.config) if (await settings.isConfigAvailable(guildId, moduleId, definition.key)) definitions.push(definition);
+  const configuration = definitions.map((item) => `**${item.label}:** ${item.type === "channel" || item.type === "category" ? channelLabel(config[item.key]) : item.type === "role-list" ? roleListLabel(config[item.key]) : String(config[item.key] ?? "Not configured")}`).join("\n") || "No settings are available for the enabled features.";
   return { embeds: [new EmbedBuilder().setColor(ui.colors.primary).setTitle(`${module.manifest.icon} ${module.manifest.name}`).setDescription(`**Status:** ${statusLabel(enabled)}\n\n**Features**\n${featureLines.join("\n") || "No feature switches."}\n\n**Configuration**\n${configuration}`)], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(componentId("core", "config", "toggle", actorId, moduleId)).setLabel(enabled ? "Disable Module" : "Enable Module").setStyle(enabled ? ButtonStyle.Danger : ButtonStyle.Success), new ButtonBuilder().setCustomId(componentId("core", "config", "features", actorId, moduleId)).setLabel("Features").setStyle(ButtonStyle.Primary).setDisabled(!module.manifest.features.length), new ButtonBuilder().setCustomId(componentId("core", "config", "settings", actorId, moduleId)).setLabel("Settings").setStyle(ButtonStyle.Primary).setDisabled(!module.manifest.config.length)), new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(componentId("core", "config", "home", actorId)).setLabel("Back").setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId(componentId("core", "config", "reset_module_prompt", actorId, moduleId)).setLabel("Reset Module").setStyle(ButtonStyle.Danger))] };
 }
 
@@ -31,10 +40,14 @@ export async function featureConfigurationView(settings: GuildConfigService, mod
   return { embeds: [new EmbedBuilder().setColor(ui.colors.primary).setTitle(`${module.manifest.name} Features`).setDescription("Select every feature that should remain enabled. Dependencies are validated when you save.")], components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu), new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(componentId("core", "config", "module_direct", actorId, moduleId)).setLabel("Back").setStyle(ButtonStyle.Secondary))] };
 }
 
-export function settingsPicker(modules: ModuleRegistry, moduleId: string, actorId: string) {
+export async function settingsPicker(settings: GuildConfigService, modules: ModuleRegistry, guildId: string, moduleId: string, actorId: string) {
   const module = modules.require(moduleId);
-  const menu = new StringSelectMenuBuilder().setCustomId(componentId("core", "config", "field", actorId, moduleId)).setPlaceholder("Choose a setting").addOptions(module.manifest.config.map((item) => ({ label: item.label, description: item.description.slice(0, 100), value: item.key })));
-  return { embeds: [new EmbedBuilder().setColor(ui.colors.primary).setTitle(`${module.manifest.name} Settings`).setDescription("Choose a field. The dashboard selects the appropriate Discord control for its declared type.")], components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu), new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(componentId("core", "config", "module_direct", actorId, moduleId)).setLabel("Back").setStyle(ButtonStyle.Secondary))] };
+  const definitions = [];
+  for (const definition of module.manifest.config) if (await settings.isConfigAvailable(guildId, moduleId, definition.key)) definitions.push(definition);
+  const back = new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(componentId("core", "config", "module_direct", actorId, moduleId)).setLabel("Back").setStyle(ButtonStyle.Secondary));
+  if (!definitions.length) return { embeds: [new EmbedBuilder().setColor(ui.colors.neutral).setTitle(`${module.manifest.name} Settings`).setDescription("No settings are available for the currently enabled features.")], components: [back] };
+  const menu = new StringSelectMenuBuilder().setCustomId(componentId("core", "config", "field", actorId, moduleId)).setPlaceholder("Choose a setting").addOptions(definitions.map((item) => ({ label: item.label, description: item.description.slice(0, 100), value: item.key })));
+  return { embeds: [new EmbedBuilder().setColor(ui.colors.primary).setTitle(`${module.manifest.name} Settings`).setDescription("Choose a field. Settings owned by disabled features stay hidden until those features are enabled.")], components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu), back] };
 }
 
 export function fieldEditor(modules: ModuleRegistry, moduleId: string, key: string, actorId: string) {

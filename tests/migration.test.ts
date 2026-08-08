@@ -18,4 +18,12 @@ describe("modular platform migration", () => {
     expect(sql).toContain('CREATE TABLE "moderation_action_receipts"');
     expect(sql).not.toMatch(/TRUNCATE|DROP DATABASE/i);
   });
+  it("merges legacy moderation and audit logs without losing the configured channel", async () => {
+    const sql = await readFile(new URL("../drizzle/0003_unified_audit_log.sql", import.meta.url), "utf8");
+    expect(sql).toContain("moderationLogChannelId");
+    expect(sql).toContain("auditLogChannelId");
+    expect(sql).toContain("bool_or");
+    expect(sql).toContain("'moderation-log'");
+    expect(sql).not.toMatch(/TRUNCATE|DROP DATABASE/i);
+  });
 });

@@ -59,6 +59,7 @@ export function validateManifest(manifest: ModuleManifest): void {
   for (const definition of manifest.config) {
     if (configKeys.has(definition.key)) throw new Error(`Duplicate config key: ${manifest.id}.${definition.key}`);
     configKeys.add(definition.key);
+    if (definition.featureId && !features.has(definition.featureId)) throw new Error(`Unknown config feature: ${manifest.id}.${definition.key} -> ${definition.featureId}`);
     if (definition.requiredWhen && !features.has(definition.requiredWhen.featureId)) throw new Error(`Unknown requiredWhen feature: ${manifest.id}.${definition.key}`);
   }
 }

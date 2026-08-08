@@ -7,6 +7,7 @@ import { replyPrivately } from "../interactions/replies.js";
 import { requireModerationAccess } from "../permissions/authorization.js";
 import { caseOverview } from "../ui/cases/case-view.js";
 import { buildActionCard } from "../ui/actions/action-card.js";
+import { publishAuditLog } from "../ui/actions/audit-log-publisher.js";
 import { parseDuration, MAX_TIMEOUT_MS } from "../utils/duration.js";
 import { componentId } from "../utils/custom-id.js";
 
@@ -58,6 +59,7 @@ export default {
         { id: client.user!.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ReadMessageHistory] },
       ], reason: `Private moderation case #${result.case.caseNumber}` });
       await moderation(client).cases.updateEntryMetadata(guild.id, result.entry.id, { channelId: channel.id });
+      await publishAuditLog(moderation(client).configs, guild, { action: "create_channel", actor, target: targetUser, ...(reason ? { reason } : {}), case: result.case, entry: result.entry, result: `${channel}` });
     } else {
       if (!member) throw new Error("That action requires a user who is currently in the server.");
       const permission = action === "ban" ? PermissionFlagsBits.BanMembers : action === "kick" ? PermissionFlagsBits.KickMembers : PermissionFlagsBits.ModerateMembers;

@@ -139,7 +139,6 @@ export type ModerationCustomCaseType = typeof moderationCustomCaseTypes.$inferSe
 
 export interface ModerationConfig {
   readonly guildId: string;
-  readonly moderationLogChannelId: string | null;
   readonly auditLogChannelId: string | null;
   readonly caseCategoryId: string | null;
   readonly moderatorRoleIds: string[];

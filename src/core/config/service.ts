@@ -80,6 +80,7 @@ export class GuildConfigService {
     const module = this.modules.require(moduleId);
     const definition = module.manifest.config.find((candidate) => candidate.key === key);
     if (!definition) throw new Error(`Unknown configuration field: ${moduleId}.${key}`);
+    if (!await this.isConfigAvailable(guildId, moduleId, key)) throw new Error("Enable the module and its related feature before configuring this setting.");
     const validated = validateConfigValue(definition, value);
     const row = await this.repository.module(guildId, moduleId);
     const config = await this.getModuleConfig(guildId, moduleId);
@@ -88,6 +89,21 @@ export class GuildConfigService {
     await this.repository.saveModule(guildId, moduleId, row?.enabled ?? module.manifest.defaultEnabled, config);
     await this.repository.audit(guildId, actorId, moduleId, key, definition.sensitive ? "[REDACTED]" : before, definition.sensitive ? "[REDACTED]" : validated);
   }
+  async isConfigAvailable(guildId: string, moduleId: string, key: string): Promise<boolean> {
+    if (!await this.isModuleEnabled(guildId, moduleId)) return false;
+    const definition = this.modules.require(moduleId).manifest.config.find((candidate) => candidate.key === key);
+    if (!definition) throw new Error(`Unknown configuration field: ${moduleId}.${key}`);
+    return !definition.featureId || await this.isFeatureEnabled(guildId, moduleId, definition.featureId);
+  }
+  async requireConfigAvailable(guildId: string, moduleId: string, key: string): Promise<void> {
+    if (!await this.isConfigAvailable(guildId, moduleId, key)) throw new Error("Enable the module and its related feature before configuring this setting.");
+  }
+  async isConfigRequired(guildId: string, moduleId: string, key: string): Promise<boolean> {
+    if (!await this.isConfigAvailable(guildId, moduleId, key)) return false;
+    const definition = this.modules.require(moduleId).manifest.config.find((candidate) => candidate.key === key);
+    if (!definition) throw new Error(`Unknown configuration field: ${moduleId}.${key}`);
+    return Boolean(definition.required || (definition.requiredWhen && definition.requiredWhen.enabled === await this.isFeatureEnabled(guildId, moduleId, definition.requiredWhen.featureId)));
+  }
   async configurationIssues(guildId: string, onlyModuleId?: string): Promise<ConfigurationIssue[]> {
     const issues: ConfigurationIssue[] = [];
     for (const module of this.modules.all()) {
@@ -95,7 +111,8 @@ export class GuildConfigService {
       if (!await this.isModuleEnabled(guildId, module.manifest.id)) continue;
       const config = await this.getModuleConfig(guildId, module.manifest.id);
       for (const definition of module.manifest.config) {
-        const required = definition.required || (definition.requiredWhen && definition.requiredWhen.enabled === await this.isFeatureEnabled(guildId, module.manifest.id, definition.requiredWhen.featureId));
+        if (!await this.isConfigAvailable(guildId, module.manifest.id, definition.key)) continue;
+        const required = await this.isConfigRequired(guildId, module.manifest.id, definition.key);
         const value = config[definition.key];
         if (required && (value === null || value === "" || (Array.isArray(value) && value.length === 0))) issues.push({ moduleId: module.manifest.id, key: definition.key, message: `${module.manifest.name}: ${definition.label} is required` });
       }

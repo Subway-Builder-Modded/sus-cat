@@ -5,7 +5,7 @@ import type { ModerationAction } from "../../domain/types.js";
 import { formatDuration } from "../../utils/duration.js";
 import { actionPresentation } from "./presentation.js";
 
-export function buildActionCard(input: { action: ModerationAction | "nickname" | "slowmode" | "lock" | "unlock" | "purge"; target?: User | GuildMember; actor: GuildMember; reason?: string; durationMs?: number; result?: string; case?: ModerationUserCase; entry?: ModerationCaseEntry; details?: { name: string; value: string; inline?: boolean }[]; evidence?: string }): EmbedBuilder {
+export function buildActionCard(input: { action: ModerationAction | "nickname" | "slowmode" | "lock" | "unlock" | "purge" | "sudo"; target?: User | GuildMember; actor: GuildMember; reason?: string; durationMs?: number; result?: string; case?: ModerationUserCase; entry?: ModerationCaseEntry; details?: { name: string; value: string; inline?: boolean }[]; evidence?: string }): EmbedBuilder {
   const presentation = actionPresentation[input.action];
   const user = input.target && "user" in input.target ? input.target.user : input.target;
   const embed = new EmbedBuilder().setColor(presentation.color).setTitle(`${presentation.emoji} ${presentation.pastTense}`).setTimestamp();

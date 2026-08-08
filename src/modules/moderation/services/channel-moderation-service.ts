@@ -4,6 +4,7 @@ import type { ModerationSettings } from "../config/settings.js";
 import type { LockRepository } from "../repositories/lock-repository.js";
 import { readSendMessagesState } from "../utils/lock-state.js";
 import type { CaseRepository } from "../repositories/case-repository.js";
+import { publishAuditLog } from "../ui/actions/audit-log-publisher.js";
 
 export interface PurgeFilters { count: number; userId?: string; bots?: boolean; links?: boolean; attachments?: boolean; contains?: string }
 export interface PurgePreview { matched: number; channels: number; scanned: number; tooOld: number }
@@ -16,6 +17,7 @@ export class ChannelModerationService {
     const before = channel.rateLimitPerUser;
     await channel.setRateLimitPerUser(seconds);
     if (await this.configs.feature(channel.guild.id, "audit-log")) await this.cases.audit("channel.slowmode", channel.guild.id, actor.id, undefined, undefined, { channelId: channel.id, before, after: seconds });
+    await publishAuditLog(this.configs, channel.guild, { action: "slowmode", actor, result: `${channel}`, details: [{ name: "Before", value: `${before} seconds`, inline: true }, { name: "After", value: `${seconds} seconds`, inline: true }] });
     return { before, after: seconds };
   }
 
@@ -26,6 +28,7 @@ export class ChannelModerationService {
     try { await channel.permissionOverwrites.edit(channel.guild.roles.everyone, { SendMessages: false }, { ...(reason ? { reason } : {}) }); }
     catch (error) { await this.locks.remove(channel.id); throw error; }
     if (await this.configs.feature(channel.guild.id, "audit-log")) await this.cases.audit("channel.locked", channel.guild.id, actor.id, undefined, undefined, { channelId: channel.id, reason });
+    await publishAuditLog(this.configs, channel.guild, { action: "lock", actor, result: `${channel}`, ...(reason ? { reason } : {}) });
   }
 
   async unlock(channel: TextChannel, actor: GuildMember, reason?: string): Promise<void> {
@@ -34,12 +37,14 @@ export class ChannelModerationService {
     await channel.permissionOverwrites.edit(channel.guild.roles.everyone, { SendMessages: state.previousSendMessages }, { ...(reason ? { reason } : {}) });
     await this.locks.remove(channel.id);
     if (await this.configs.feature(channel.guild.id, "audit-log")) await this.cases.audit("channel.unlocked", channel.guild.id, actor.id, undefined, undefined, { channelId: channel.id, reason });
+    await publishAuditLog(this.configs, channel.guild, { action: "unlock", actor, result: `${channel}`, ...(reason ? { reason } : {}) });
   }
 
   async sendAsBot(channel: GuildTextBasedChannel, actor: GuildMember, content: string, idempotencyKey: string): Promise<void> {
     if (!await this.cases.reserveAction(actor.guild.id, actor.id, undefined, idempotencyKey, "sudo")) throw new Error("This interaction has already been processed.");
     const message = await channel.send({ content, allowedMentions: { parse: [] } });
     if (await this.configs.feature(actor.guild.id, "audit-log")) await this.cases.audit("sudo.message", actor.guild.id, actor.id, undefined, undefined, { channelId: channel.id, messageId: message.id }, undefined, undefined, undefined, `sudo:${idempotencyKey}`);
+    await publishAuditLog(this.configs, actor.guild, { action: "sudo", actor, result: `${channel}`, details: [{ name: "Message ID", value: `\`${message.id}\``, inline: true }] });
   }
 
   async previewPurge(channels: readonly TextChannel[], filters: PurgeFilters): Promise<PurgePreview> {
@@ -62,6 +67,7 @@ export class ChannelModerationService {
       }
     }
     if (await this.configs.feature(actor.guild.id, "audit-log")) await this.cases.audit("messages.purged", actor.guild.id, actor.id, undefined, filters.userId, { channelIds: channels.map((channel) => channel.id), matched: scan.matches.length, deleted, failed, tooOld: scan.tooOld, filters });
+    await publishAuditLog(this.configs, actor.guild, { action: "purge", actor, result: `${deleted} deleted across ${channels.length} channel${channels.length === 1 ? "" : "s"}`, details: [{ name: "Matched", value: String(scan.matches.length), inline: true }, { name: "Too old", value: String(scan.tooOld), inline: true }, { name: "Failed", value: String(failed), inline: true }] });
     return { deleted, matched: scan.matches.length, tooOld: scan.tooOld, failed, channels: new Set(scan.matches.map((message) => message.channelId)).size };
   }
 

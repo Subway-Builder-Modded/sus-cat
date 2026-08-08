@@ -7,7 +7,7 @@ import type { RoutedComponentInteraction } from "../interactions/types.js";
 import { respond, type SafeReplyOptions } from "../interactions/response.js";
 import { requireConfigurationAccess } from "../permissions/configuration.js";
 import { successEmbed } from "../ui/embeds.js";
-import { botAdminRolesView, featureSelectionView, moduleSelectionView, reviewView, setupConfigurationView, welcomeView } from "./views.js";
+import { botAdminRolesView, featureSelectionView, moduleSelectionView, reviewView, setupConfigurationView, setupFieldEditor, welcomeView } from "./views.js";
 
 export async function handleSetupComponent(client: BotClient, interaction: RoutedComponentInteraction, action: string, parts: readonly string[]): Promise<void> {
   if (!interaction.inCachedGuild()) throw new Error("Setup is only available in a server.");
@@ -62,19 +62,40 @@ export async function handleSetupComponent(client: BotClient, interaction: Route
     return update(interaction, previous ? await setupConfigurationView(settings, modules, interaction.guildId, previous.manifest.id, actorId) : await moduleSelectionView(settings, modules, interaction.guildId, actorId));
   }
   if (action === "continue_features") return update(interaction, await setupConfigurationView(settings, modules, interaction.guildId, required(parts, 1), actorId));
-  if (action === "channel" && interaction.isChannelSelectMenu()) {
-    const moduleId = required(parts, 1), key = required(parts, 2);
-    await settings.setConfig(interaction.guildId, moduleId, key, interaction.values[0] ?? null, actorId);
+  if (action === "config_home") return update(interaction, await setupConfigurationView(settings, modules, interaction.guildId, required(parts, 1), actorId));
+  if (action === "config_field" && interaction.isStringSelectMenu()) {
+    const moduleId = required(parts, 1), key = required(interaction.values, 0), editor = await setupFieldEditor(settings, modules, interaction.guildId, moduleId, key, actorId);
+    if ("modal" in editor) await interaction.showModal(editor.modal); else await update(interaction, editor.view);
+    return;
+  }
+  if (action === "config_channel" && interaction.isChannelSelectMenu()) {
+    const moduleId = required(parts, 1), key = required(parts, 2), definition = modules.require(moduleId).manifest.config.find((item) => item.key === key);
+    if (!definition) throw new Error("That setup field no longer exists.");
+    await settings.setConfig(interaction.guildId, moduleId, key, definition.type === "channel-list" ? interaction.values : interaction.values[0] ?? null, actorId);
     return update(interaction, await setupConfigurationView(settings, modules, interaction.guildId, moduleId, actorId));
   }
-  if (action === "roles" && interaction.isRoleSelectMenu()) {
-    const moduleId = required(parts, 1), key = required(parts, 2);
-    await settings.setConfig(interaction.guildId, moduleId, key, interaction.values, actorId);
+  if (action === "config_role" && interaction.isRoleSelectMenu()) {
+    const moduleId = required(parts, 1), key = required(parts, 2), definition = modules.require(moduleId).manifest.config.find((item) => item.key === key);
+    if (!definition) throw new Error("That setup field no longer exists.");
+    await settings.setConfig(interaction.guildId, moduleId, key, definition.type === "role-list" ? interaction.values : interaction.values[0] ?? null, actorId);
     return update(interaction, await setupConfigurationView(settings, modules, interaction.guildId, moduleId, actorId));
   }
-  if (action === "enum" && interaction.isStringSelectMenu()) {
+  if (action === "config_value" && interaction.isStringSelectMenu()) {
     const moduleId = required(parts, 1), key = required(parts, 2);
     await settings.setConfig(interaction.guildId, moduleId, key, required(interaction.values, 0), actorId);
+    return update(interaction, await setupConfigurationView(settings, modules, interaction.guildId, moduleId, actorId));
+  }
+  if (action === "config_boolean" && interaction.isButton()) {
+    const moduleId = required(parts, 1), key = required(parts, 2);
+    await settings.setConfig(interaction.guildId, moduleId, key, required(parts, 3) === "true", actorId);
+    return update(interaction, await setupConfigurationView(settings, modules, interaction.guildId, moduleId, actorId));
+  }
+  if (action === "config_modal" && interaction.isModalSubmit()) {
+    const moduleId = required(parts, 1), key = required(parts, 2), definition = modules.require(moduleId).manifest.config.find((item) => item.key === key);
+    if (!definition) throw new Error("That setup field no longer exists.");
+    const raw = interaction.fields.getTextInputValue("value").trim();
+    const value = definition.type === "integer" || definition.type === "duration" ? raw ? Number(raw) : null : definition.type === "string-list" ? raw.split(/[\n,]/).map((item) => item.trim()).filter(Boolean) : raw;
+    await settings.setConfig(interaction.guildId, moduleId, key, value, actorId);
     return update(interaction, await setupConfigurationView(settings, modules, interaction.guildId, moduleId, actorId));
   }
   if (action === "back_config") return update(interaction, await featureSelectionView(settings, modules, interaction.guildId, required(parts, 1), actorId));
@@ -151,7 +172,7 @@ async function setupPermissionIssues(guild: Guild, client: BotClient): Promise<s
 }
 
 async function update(interaction: RoutedComponentInteraction, payload: InteractionUpdateOptions): Promise<void> {
-  if (interaction.isMessageComponent()) await interaction.update(payload);
+  if (interaction.isMessageComponent() || (interaction.isModalSubmit() && interaction.isFromMessage())) await interaction.update(payload);
   else await respond(interaction, payload as SafeReplyOptions);
 }
 

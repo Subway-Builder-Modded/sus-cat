@@ -25,18 +25,24 @@ export async function handleConfigComponent(client: BotClient, interaction: Rout
     await settings.setModuleEnabled(interaction.guildId, moduleId, !await settings.isModuleEnabled(interaction.guildId, moduleId), actorId);
     return update(interaction, await moduleConfigurationView(settings, modules, interaction.guildId, moduleId, actorId));
   }
-  if (action === "features") return update(interaction, await featureConfigurationView(settings, modules, interaction.guildId, required(parts, 1), actorId));
+  if (action === "features") {
+    const moduleId = required(parts, 1);
+    if (!await settings.isModuleEnabled(interaction.guildId, moduleId)) throw new Error("Enable this module before configuring its features.");
+    return update(interaction, await featureConfigurationView(settings, modules, interaction.guildId, moduleId, actorId));
+  }
   if (action === "save_features" && interaction.isStringSelectMenu()) {
     const moduleId = required(parts, 1);
+    if (!await settings.isModuleEnabled(interaction.guildId, moduleId)) throw new Error("Enable this module before configuring its features.");
     const manifest = modules.require(moduleId).manifest;
     for (const feature of [...manifest.features].reverse()) if (!interaction.values.includes(feature.id)) await settings.setFeatureEnabled(interaction.guildId, moduleId, feature.id, false, actorId);
     for (const feature of manifest.features) if (interaction.values.includes(feature.id)) await settings.setFeatureEnabled(interaction.guildId, moduleId, feature.id, true, actorId);
     return update(interaction, await moduleConfigurationView(settings, modules, interaction.guildId, moduleId, actorId));
   }
-  if (action === "settings") return update(interaction, settingsPicker(modules, required(parts, 1), actorId));
+  if (action === "settings") return update(interaction, await settingsPicker(settings, modules, interaction.guildId, required(parts, 1), actorId));
   if (action === "field" && interaction.isStringSelectMenu()) {
     const moduleId = required(parts, 1);
     const key = required(interaction.values, 0);
+    await settings.requireConfigAvailable(interaction.guildId, moduleId, key);
     const editor = fieldEditor(modules, moduleId, key, actorId);
     if (editor) return update(interaction, editor);
     const definition = modules.require(moduleId).manifest.config.find((item) => item.key === key)!;
@@ -47,6 +53,7 @@ export async function handleConfigComponent(client: BotClient, interaction: Rout
   }
   if (action === "save_field") {
     const moduleId = required(parts, 1), key = required(parts, 2);
+    await settings.requireConfigAvailable(interaction.guildId, moduleId, key);
     const definition = modules.require(moduleId).manifest.config.find((item) => item.key === key)!;
     let value: unknown;
     if (interaction.isButton()) value = required(parts, 3) === "true";
@@ -57,6 +64,7 @@ export async function handleConfigComponent(client: BotClient, interaction: Rout
   }
   if (action === "modal_field" && interaction.isModalSubmit()) {
     const moduleId = required(parts, 1), key = required(parts, 2);
+    await settings.requireConfigAvailable(interaction.guildId, moduleId, key);
     const definition = modules.require(moduleId).manifest.config.find((item) => item.key === key)!;
     const raw = interaction.fields.getTextInputValue("value");
     const value = definition.type === "integer" || definition.type === "duration" ? Number(raw) : definition.type === "string-list" ? raw.split(/[,\n]/).map((item) => item.trim()).filter(Boolean) : raw;

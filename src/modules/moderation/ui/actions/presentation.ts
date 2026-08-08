@@ -9,7 +9,7 @@ export interface ModerationActionPresentation {
   readonly dmVerb: string;
 }
 
-export const actionPresentation: Record<ModerationAction | "nickname" | "slowmode" | "lock" | "unlock" | "purge", ModerationActionPresentation> = {
+export const actionPresentation: Record<ModerationAction | "nickname" | "slowmode" | "lock" | "unlock" | "purge" | "sudo", ModerationActionPresentation> = {
   ban: { label: "Ban", emoji: "🔨", color: 0xed4245, pastTense: "Banned", dmVerb: "banned from" },
   unban: { label: "Unban", emoji: "🔓", color: 0x57f287, pastTense: "Unbanned", dmVerb: "unbanned from" },
   kick: { label: "Kick", emoji: "🥾", color: 0xf39c12, pastTense: "Kicked", dmVerb: "kicked from" },
@@ -26,4 +26,5 @@ export const actionPresentation: Record<ModerationAction | "nickname" | "slowmod
   lock: { label: "Channel Lock", emoji: "🔒", color: 0x607d8b, pastTense: "Locked", dmVerb: "updated in" },
   unlock: { label: "Channel Unlock", emoji: "🔑", color: 0x57f287, pastTense: "Unlocked", dmVerb: "updated in" },
   purge: { label: "Purge", emoji: "🧹", color: 0xe67e22, pastTense: "Purged", dmVerb: "updated in" },
+  sudo: { label: "Sudo Message", emoji: "📣", color: 0x5865f2, pastTense: "Bot message sent", dmVerb: "updated in" },
 };

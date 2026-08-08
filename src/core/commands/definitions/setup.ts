@@ -6,7 +6,7 @@ import { welcomeView } from "../../setup/views.js";
 import { respond } from "../../interactions/response.js";
 
 export default {
-  data: new SlashCommandBuilder().setName("setup").setDescription("Configure this server with the guided setup wizard"),
+  data: new SlashCommandBuilder().setName("setup").setDescription("Configure this server with the setup wizard."),
   requirements: { acknowledgement: "defer-ephemeral", guildOnly: true, setupRequired: false },
   async execute(client, interaction) {
     if (!interaction.isChatInputCommand() || !interaction.inCachedGuild()) return;

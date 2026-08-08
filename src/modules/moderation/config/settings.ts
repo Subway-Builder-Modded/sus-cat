@@ -9,7 +9,6 @@ export class ModerationSettings {
     const config = await this.settings.getModuleConfig(guildId, "moderation");
     return {
       guildId,
-      moderationLogChannelId: stringOrNull(config.moderationLogChannelId),
       auditLogChannelId: stringOrNull(config.auditLogChannelId),
       caseCategoryId: stringOrNull(config.caseCategoryId),
       moderatorRoleIds: stringArray(config.moderatorRoleIds),

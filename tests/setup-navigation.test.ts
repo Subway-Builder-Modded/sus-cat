@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { ModuleRegistry } from "../src/core/modules/registry.js";
-import { featureSelectionView, moduleSelectionView, setupConfigurationView } from "../src/core/setup/views.js";
+import { featureSelectionView, moduleSelectionView, setupConfigurationView, setupFieldEditor } from "../src/core/setup/views.js";
 import { parseComponentId } from "../src/core/interactions/custom-id.js";
 
-const module = { manifest: { id: "sample", name: "Sample", description: "Sample module", version: "1", icon: "🧩", defaultEnabled: false, features: [{ id: "one", name: "One", description: "One", defaultEnabled: true }, { id: "two", name: "Two", description: "Two", defaultEnabled: true }], config: [{ key: "scope", label: "Scope", description: "Audit scope", type: "enum", defaultValue: "moderation", category: "audit", setup: true, choices: [{ name: "Moderation", value: "moderation" }, { name: "Full", value: "full" }] }], capabilities: [], docs: [] }, commands: [] } as const;
+const module = { manifest: { id: "sample", name: "Sample", description: "Sample module", version: "1", icon: "🧩", defaultEnabled: false, features: [{ id: "one", name: "One", description: "One", defaultEnabled: true }, { id: "two", name: "Two", description: "Two", defaultEnabled: true }], config: [{ key: "scope", label: "Scope", description: "Audit scope", type: "enum", defaultValue: "moderation", category: "audit", featureId: "one", requiredWhen: { featureId: "one", enabled: true }, choices: [{ name: "Moderation", value: "moderation" }, { name: "Full", value: "full" }] }, { key: "threshold", label: "Threshold", description: "Optional threshold", type: "integer", defaultValue: 25, category: "advanced", featureId: "one", min: 1, max: 100 }], capabilities: [], docs: [] }, commands: [] } as const;
 const registry = new ModuleRegistry(); registry.register(module);
 
 describe("setup selection and navigation", () => {
@@ -23,11 +23,28 @@ describe("setup selection and navigation", () => {
     expect(actions).toContain("continue_modules");
     expect(actions).toContain("back_admin");
   });
-  it("collects enum settings without exceeding Discord's five action-row limit", async () => {
-    const settings = { getModuleConfig: async () => ({ scope: "moderation" }) } as never;
+  it("lists every available setting and marks required fields", async () => {
+    const settings = { getModuleConfig: async () => ({ scope: "moderation", threshold: 25 }), isConfigAvailable: async () => true, isConfigRequired: async (_guild: string, _module: string, key: string) => key === "scope" } as never;
     const view = await setupConfigurationView(settings, registry, "guild", "sample", "actor");
     const actions = view.components.flatMap((row) => row.components.map((component) => parseComponentId(component.toJSON().custom_id!)?.action));
-    expect(actions).toContain("enum");
+    expect(actions).toContain("config_field");
+    const options = view.components[0]?.components[0]?.toJSON().options;
+    expect(options).toEqual(expect.arrayContaining([expect.objectContaining({ label: "Scope *", value: "scope" }), expect.objectContaining({ label: "Threshold", value: "threshold" })]));
+    expect(view.embeds[0]?.toJSON().description).toContain("**Scope** *");
     expect(view.components.length).toBeLessThanOrEqual(5);
+  });
+  it("provides the type-appropriate editor from the full setup picker", async () => {
+    const settings = { getModuleConfig: async () => ({ scope: "moderation", threshold: 25 }), requireConfigAvailable: async () => undefined, isConfigRequired: async () => true } as never;
+    const editor = await setupFieldEditor(settings, registry, "guild", "sample", "scope", "actor");
+    expect("view" in editor && parseComponentId(editor.view.components?.[0]?.components?.[0]?.toJSON().custom_id!)?.action).toBe("config_value");
+    const modalEditor = await setupFieldEditor(settings, registry, "guild", "sample", "threshold", "actor");
+    expect("modal" in modalEditor && parseComponentId(modalEditor.modal.toJSON().custom_id)?.action).toBe("config_modal");
+  });
+  it("hides setup fields owned by disabled features", async () => {
+    const settings = { getModuleConfig: async () => ({ scope: "moderation" }), isConfigAvailable: async () => false, isConfigRequired: async () => false } as never;
+    const view = await setupConfigurationView(settings, registry, "guild", "sample", "actor");
+    const actions = view.components.flatMap((row) => row.components.map((component) => parseComponentId(component.toJSON().custom_id!)?.action));
+    expect(actions).not.toContain("config_field");
+    expect(actions).toContain("continue_config");
   });
 });

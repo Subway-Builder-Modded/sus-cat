@@ -6,7 +6,7 @@ function fixture(silent: boolean, auditEnabled = true) {
   const append = vi.fn(async () => ({ case: { id: "case", caseNumber: 1 }, entry: { id: "entry" } }));
   const audit = vi.fn();
   const cases = { reserveAction: vi.fn(async () => true), findEntryByIdempotency: vi.fn(), append, audit };
-  const configs = { feature: vi.fn(async (_guild: string, feature: string) => feature === "cases" || feature === "user-notifications" || (feature === "audit-log" && auditEnabled)), get: vi.fn(async () => ({ rulesUrl: null, moderationLogChannelId: null })) };
+  const configs = { feature: vi.fn(async (_guild: string, feature: string) => feature === "cases" || feature === "user-notifications" || (feature === "audit-log" && auditEnabled)), get: vi.fn(async () => ({ rulesUrl: null, auditLogChannelId: null })) };
   const send = vi.fn(async () => undefined), ban = vi.fn(async () => undefined), kick = vi.fn(async () => undefined), timeout = vi.fn(async () => undefined);
   const roles = { highest: { comparePositionTo: () => 1 } };
   const user = { id: "target", send, displayAvatarURL: () => "https://example.com/avatar.png" };

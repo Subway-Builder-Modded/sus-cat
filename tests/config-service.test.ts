@@ -25,7 +25,7 @@ class MemoryStore {
 
 function fixture() {
   const registry = new ModuleRegistry();
-  registry.register({ manifest: { id: "sample", name: "Sample", description: "", version: "1", icon: "🧩", defaultEnabled: false, features: [{ id: "base", name: "Base", description: "", defaultEnabled: true }, { id: "child", name: "Child", description: "", defaultEnabled: true, dependencies: ["base"] }], config: [{ key: "channel", label: "Channel", description: "", type: "channel", defaultValue: null, category: "channels", requiredWhen: { featureId: "base", enabled: true } }], capabilities: [], docs: [] }, commands: [] });
+  registry.register({ manifest: { id: "sample", name: "Sample", description: "", version: "1", icon: "🧩", defaultEnabled: false, features: [{ id: "base", name: "Base", description: "", defaultEnabled: true }, { id: "child", name: "Child", description: "", defaultEnabled: true, dependencies: ["base"] }], config: [{ key: "channel", label: "Channel", description: "", type: "channel", defaultValue: null, category: "channels", featureId: "base", requiredWhen: { featureId: "base", enabled: true } }], capabilities: [], docs: [] }, commands: [] });
   const store = new MemoryStore();
   return { store, service: new GuildConfigService(store as unknown as GuildConfigRepository, registry) };
 }
@@ -45,6 +45,18 @@ describe("guild configuration service", () => {
     await service.setModuleEnabled("guild", "sample", true, "actor");
     await service.setFeatureEnabled("guild", "sample", "base", false, "actor");
     await expect(service.setFeatureEnabled("guild", "sample", "child", true, "actor")).rejects.toThrow("requires Base");
+  });
+
+  it("exposes feature-owned settings only while their module and feature are enabled", async () => {
+    const { service } = fixture();
+    expect(await service.isConfigAvailable("guild", "sample", "channel")).toBe(false);
+    await service.setModuleEnabled("guild", "sample", true, "actor");
+    expect(await service.isConfigAvailable("guild", "sample", "channel")).toBe(true);
+    await service.setFeatureEnabled("guild", "sample", "base", false, "actor");
+    expect(await service.isConfigAvailable("guild", "sample", "channel")).toBe(false);
+    await expect(service.requireConfigAvailable("guild", "sample", "channel")).rejects.toThrow("Enable the module");
+    await expect(service.setConfig("guild", "sample", "channel", "12345678901234567", "actor")).rejects.toThrow("Enable the module");
+    expect(await service.configurationIssues("guild", "sample")).toEqual([]);
   });
 
   it("tracks setup state, validates required config, and audits changes", async () => {

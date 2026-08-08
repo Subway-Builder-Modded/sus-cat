@@ -13,10 +13,12 @@ import { parseHexColor, validateEmoji } from "../utils/custom-type.js";
 export async function handleConfigButton(client: BotClient, interaction: ButtonInteraction<"cached">, action: string, parts: readonly string[]): Promise<boolean> {
   if (!action.startsWith("config_") && !action.startsWith("type_")) return false;
   await requireConfigurationAccess(client.platform.settings, interaction.member);
+  if (!await client.platform.settings.isModuleEnabled(interaction.guildId, "moderation")) throw new Error("Enable Moderation before configuring its features and settings.");
   const module = requireModerationModule(client);
+  if ((action === "config_cases" || action.startsWith("type_")) && !await client.platform.settings.isFeatureEnabled(interaction.guildId, "moderation", "cases")) throw new Error("Enable Cases before configuring custom case types.");
   if (action === "config_home") await interaction.update(await moderationConfigView(client.platform.settings, interaction.guildId, interaction.user.id));
   else if (action === "config_features") await interaction.update(await featureConfigurationView(client.platform.settings, client.platform.modules, interaction.guildId, "moderation", interaction.user.id));
-  else if (action === "config_section") await interaction.update(configSectionView(required(parts, 1), interaction.user.id));
+  else if (action === "config_section") await interaction.update(await configSectionView(client.platform.settings, interaction.guildId, required(parts, 1), interaction.user.id));
   else if (action === "config_cases") await interaction.update(casesConfigView(interaction.user.id));
   else if (action === "config_advanced") await interaction.update(advancedConfigView(interaction.user.id));
   else if (action === "type_add") await interaction.showModal(customTypeModal("modal_type_add", interaction.user.id, "new", "Add Custom Type"));
@@ -42,8 +44,10 @@ export async function handleConfigButton(client: BotClient, interaction: ButtonI
 export async function handleConfigSelect(client: BotClient, interaction: StringSelectMenuInteraction<"cached">, action: string): Promise<boolean> {
   if (action !== "config_field" && action !== "type_select") return false;
   await requireConfigurationAccess(client.platform.settings, interaction.member);
+  if (!await client.platform.settings.isModuleEnabled(interaction.guildId, "moderation")) throw new Error("Enable Moderation before configuring its features and settings.");
   if (action === "config_field") {
     const key = required(interaction.values, 0), editor = fieldEditor(client.platform.modules, "moderation", key, interaction.user.id);
+    await client.platform.settings.requireConfigAvailable(interaction.guildId, "moderation", key);
     if (editor) await interaction.update(editor);
     else {
       const definition = client.platform.modules.require("moderation").manifest.config.find((item) => item.key === key); if (!definition) throw new Error("That setting no longer exists.");
@@ -60,8 +64,10 @@ export async function handleConfigSelect(client: BotClient, interaction: StringS
 export async function handleConfigModal(client: BotClient, interaction: ModalSubmitInteraction<"cached">, action: string, parts: readonly string[]): Promise<boolean> {
   if (action !== "modal_config_field" && action !== "modal_type_add" && action !== "modal_type_edit") return false;
   await requireConfigurationAccess(client.platform.settings, interaction.member);
+  if (!await client.platform.settings.isModuleEnabled(interaction.guildId, "moderation")) throw new Error("Enable Moderation before configuring its features and settings.");
   if (action === "modal_config_field") {
     const key = required(parts, 1), definition = client.platform.modules.require("moderation").manifest.config.find((item) => item.key === key); if (!definition) throw new Error("That setting no longer exists.");
+    await client.platform.settings.requireConfigAvailable(interaction.guildId, "moderation", key);
     const raw = interaction.fields.getTextInputValue("value");
     await client.platform.settings.setConfig(interaction.guildId, "moderation", key, definition.type === "integer" ? Number(raw) : raw, interaction.user.id);
     await interaction.reply({ flags: MessageFlags.Ephemeral, embeds: [successEmbed("Configuration saved", `${definition.label} was updated.`)] });

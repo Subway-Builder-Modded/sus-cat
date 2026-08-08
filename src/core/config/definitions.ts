@@ -13,9 +13,10 @@ export interface ConfigDefinition {
   readonly type: ConfigType;
   readonly defaultValue: ConfigValue;
   readonly category: string;
+  /** Feature that owns this setting. Hidden and non-editable while disabled. */
+  readonly featureId?: string;
   readonly required?: boolean;
   readonly requiredWhen?: RequiredWhen;
-  readonly setup?: boolean;
   readonly sensitive?: boolean;
   readonly confirmationRequired?: boolean;
   readonly min?: number;

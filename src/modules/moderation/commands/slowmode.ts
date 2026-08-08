@@ -2,23 +2,19 @@ import { ChannelType, PermissionFlagsBits, SlashCommandBuilder } from "discord.j
 import type { BotCommand } from "../../../core/commands/command.js";
 import { moderation, requireGuildInteraction } from "../interactions/context.js";
 import { replyPrivately } from "../interactions/replies.js";
-import { successEmbed } from "../ui/responses.js";
+import { buildActionCard } from "../ui/actions/action-card.js";
 
 export default {
   data: new SlashCommandBuilder().setName("slowmode").setDescription("Set or remove channel slowmode")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addIntegerOption((option) => option.setName("seconds").setDescription("0 disables slowmode").setRequired(true).setMinValue(0).setMaxValue(21_600))
-    .addStringOption((option) => option.setName("reason").setDescription("Reason").setRequired(true).setMaxLength(1_000))
     .addChannelOption((option) => option.setName("channel").setDescription("Channel; defaults to current").addChannelTypes(ChannelType.GuildText)),
-  requirements: { moduleId: "moderation", featureId: "slowmode", capability: "moderation.channel.manage", guildOnly: true, setupRequired: true, acknowledgement: "defer-ephemeral" },
+  requirements: { moduleId: "moderation", featureId: "slowmode", nativeUserPermission: PermissionFlagsBits.ManageChannels, guildOnly: true, setupRequired: true, acknowledgement: "defer-ephemeral" },
   async execute(client, interaction) {
     if (!interaction.isChatInputCommand()) return;
-    const { guild, actor } = requireGuildInteraction(interaction);
-    const selected = interaction.options.getChannel("channel");
+    const { guild, actor } = requireGuildInteraction(interaction), selected = interaction.options.getChannel("channel");
     const channel = selected ? await guild.channels.fetch(selected.id) : interaction.channel;
     if (!channel || channel.type !== ChannelType.GuildText) throw new Error("Select a text channel.");
-    const seconds = interaction.options.getInteger("seconds", true);
-    await moderation(client).channels.setSlowmode(channel, actor, seconds, interaction.options.getString("reason", true));
-    await replyPrivately(interaction, { embeds: [successEmbed("Slowmode updated", `${channel} now has a ${seconds}-second slowmode.`)] });
+    const result = await moderation(client).channels.setSlowmode(channel, actor, interaction.options.getInteger("seconds", true));
+    await replyPrivately(interaction, { embeds: [buildActionCard({ action: "slowmode", actor, result: `${channel}`, details: [{ name: "Before", value: `${result.before} seconds`, inline: true }, { name: "After", value: `${result.after} seconds`, inline: true }] })] });
   },
 } satisfies BotCommand;

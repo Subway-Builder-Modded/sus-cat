@@ -21,10 +21,6 @@ class MemoryStore {
     this.modules.delete(`${guildId}:${moduleId}`);
     for (const key of this.features.keys()) if (key.startsWith(`${guildId}:${moduleId}:`)) this.features.delete(key);
   }
-  async clearGuildConfiguration(guildId: string) {
-    for (const key of this.modules.keys()) if (key.startsWith(`${guildId}:`)) this.modules.delete(key);
-    for (const key of this.features.keys()) if (key.startsWith(`${guildId}:`)) this.features.delete(key);
-  }
 }
 
 function fixture() {
@@ -63,14 +59,12 @@ describe("guild configuration service", () => {
     expect(store.audits.map((event) => event.key)).toContain("channel");
   });
 
-  it("resets configuration without touching another guild", async () => {
+  it("resets one module without touching another guild", async () => {
     const { service } = fixture();
     await service.setModuleEnabled("guild-a", "sample", true, "actor");
     await service.setModuleEnabled("guild-b", "sample", true, "actor");
     await service.resetModule("guild-a", "sample", "actor");
     expect(await service.isModuleEnabled("guild-a", "sample")).toBe(false);
     expect(await service.isModuleEnabled("guild-b", "sample")).toBe(true);
-    await service.reset("guild-b", "actor");
-    expect(await service.setupStatus("guild-b")).toBe("unconfigured");
   });
 });

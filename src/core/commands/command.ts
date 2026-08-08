@@ -18,7 +18,7 @@ export type InteractionAcknowledgement = "defer-ephemeral" | "defer-public" | "i
 export interface CommandRequirements {
   readonly moduleId?: string;
   readonly featureId?: string;
-  readonly capability?: string;
+  readonly nativeUserPermission?: bigint;
   readonly guildOnly?: boolean;
   readonly setupRequired?: boolean;
   readonly acknowledgement: InteractionAcknowledgement;
@@ -28,4 +28,5 @@ export interface BotCommand {
   readonly data: BotCommandBuilder;
   readonly requirements: CommandRequirements;
   execute(client: BotClient, interaction: BotCommandInteraction): Promise<void>;
+  autocomplete?(client: BotClient, interaction: import("discord.js").AutocompleteInteraction): Promise<void>;
 }

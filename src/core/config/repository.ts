@@ -15,6 +15,10 @@ export class GuildConfigRepository {
   async setup(guildId: string) {
     return this.db.query.guildSettings.findFirst({ where: eq(guildSettings.guildId, guildId) });
   }
+  async setBotAdminRoles(guildId: string, roleIds: readonly string[]): Promise<void> {
+    await this.ensureGuild(guildId);
+    await this.db.update(guildSettings).set({ botAdminRoleIds: [...new Set(roleIds)], updatedAt: new Date() }).where(eq(guildSettings.guildId, guildId));
+  }
   async setSetup(guildId: string, status: "unconfigured" | "configuring" | "configured", actorId: string): Promise<void> {
     await this.ensureGuild(guildId);
     await this.db.update(guildSettings).set({ setupStatus: status, updatedAt: new Date(), ...(status === "configured" ? { setupCompletedAt: new Date(), setupCompletedBy: actorId } : { setupCompletedAt: null, setupCompletedBy: null }) }).where(eq(guildSettings.guildId, guildId));
@@ -43,9 +47,5 @@ export class GuildConfigRepository {
   async clearModule(guildId: string, moduleId: string): Promise<void> {
     await this.db.delete(guildFeatures).where(and(eq(guildFeatures.guildId, guildId), eq(guildFeatures.moduleId, moduleId)));
     await this.db.delete(guildModules).where(and(eq(guildModules.guildId, guildId), eq(guildModules.moduleId, moduleId)));
-  }
-  async clearGuildConfiguration(guildId: string): Promise<void> {
-    await this.db.delete(guildFeatures).where(eq(guildFeatures.guildId, guildId));
-    await this.db.delete(guildModules).where(eq(guildModules.guildId, guildId));
   }
 }

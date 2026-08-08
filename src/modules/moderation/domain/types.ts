@@ -1,16 +1,11 @@
-import type { ModerationCase } from "../database/schema.js";
+import type { ModerationCaseEntry, ModerationUserCase } from "../database/schema.js";
 
-export type ModerationAction = ModerationCase["action"];
-export type ModerationCaseStatus = ModerationCase["status"];
+export type ModerationAction = ModerationCaseEntry["action"];
+export type EvidenceResult = "none" | "warn" | "timeout" | "kick" | "ban" | "unban" | "untimeout";
 
-export interface CaseSource {
-  readonly channelId?: string;
-  readonly messageId?: string;
-  readonly url?: string;
-}
-
-export interface CaseHistoryPage {
-  readonly cases: ModerationCase[];
+export interface UserCasePage {
+  readonly case: ModerationUserCase;
+  readonly entries: ModerationCaseEntry[];
   readonly total: number;
   readonly page: number;
   readonly pages: number;
@@ -22,6 +17,6 @@ export interface HistorySummary {
   readonly timeouts: number;
   readonly kicks: number;
   readonly bans: number;
-  readonly notes: number;
-  readonly active: number;
+  readonly unbans: number;
+  readonly evidence: number;
 }

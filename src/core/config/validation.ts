@@ -25,7 +25,7 @@ export function validateConfigValue(definition: ConfigDefinition, value: unknown
   if (typeof value !== "string") throw invalid(definition);
   const normalized = value.trim();
   if (definition.required && !normalized) throw new Error(`${definition.label} is required.`);
-  if (["channel", "role"].includes(definition.type) && normalized && !snowflake.test(normalized)) throw invalid(definition);
+  if (["channel", "category", "role"].includes(definition.type) && normalized && !snowflake.test(normalized)) throw invalid(definition);
   if (definition.type === "url" && normalized) {
     try {
       const url = new URL(normalized);

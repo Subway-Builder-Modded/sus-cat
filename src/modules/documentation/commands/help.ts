@@ -6,10 +6,10 @@ import { respond } from "../../../core/interactions/response.js";
 
 export default {
   data: new SlashCommandBuilder().setName("help").setDescription("Browse interactive bot documentation"),
-  requirements: { moduleId: "documentation", acknowledgement: "defer-ephemeral", guildOnly: true, setupRequired: false },
+  requirements: { moduleId: "documentation", acknowledgement: "defer-ephemeral", guildOnly: true, setupRequired: true },
   async execute(client, interaction) {
     if (!interaction.isChatInputCommand() || !interaction.guildId) return;
-    const minimal = await client.platform.settings.setupStatus(interaction.guildId) !== "configured";
+    const minimal = false;
     const enabled = [];
     for (const module of client.modules.all()) if (await client.platform.settings.isModuleEnabled(interaction.guildId, module.manifest.id)) enabled.push(module.manifest.id);
     await respond(interaction, documentationHome(client.platform.modules, interaction.user.id, minimal, enabled));

@@ -1,100 +1,86 @@
-import { PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
+import { ActionRowBuilder, ChannelType, MessageFlags, ModalBuilder, PermissionFlagsBits, PermissionsBitField, SlashCommandBuilder, TextInputBuilder, TextInputStyle } from "discord.js";
 
+import type { BotClient } from "../../../core/bot/bot-client.js";
 import type { BotCommand } from "../../../core/commands/command.js";
-import type { ModerationAction, ModerationCaseStatus } from "../domain/types.js";
 import { moderation, requireGuildInteraction } from "../interactions/context.js";
 import { replyPrivately } from "../interactions/replies.js";
-import { requireCapability } from "../permissions/capabilities.js";
-import { buildCaseEmbed } from "../ui/case-embed.js";
-import { caseControls } from "../ui/case-controls.js";
-import { validateReason } from "../utils/validation.js";
-import { buildSearchResults } from "../ui/search-results.js";
+import { requireModerationAccess } from "../permissions/authorization.js";
+import { caseOverview } from "../ui/cases/case-view.js";
+import { buildActionCard } from "../ui/actions/action-card.js";
+import { parseDuration, MAX_TIMEOUT_MS } from "../utils/duration.js";
+import { componentId } from "../utils/custom-id.js";
 
-const actions = ["warn", "note", "timeout", "untimeout", "kick", "ban", "unban", "softban", "nick", "manual", "automated"] as const;
-const statuses = ["pending", "active", "expired", "reversed", "voided", "superseded", "failed"] as const;
+const actionChoices = [
+  { name: "None — record only", value: "none" }, { name: "Warning", value: "warn" }, { name: "Timeout", value: "timeout" },
+  { name: "Kick", value: "kick" }, { name: "Ban", value: "ban" }, { name: "Create private case channel", value: "create_channel" },
+] as const;
 
 export default {
-  data: new SlashCommandBuilder().setName("case").setDescription("View and manage moderation cases")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
-    .addSubcommand((command) => command.setName("view").setDescription("View one case").addIntegerOption((option) => option.setName("number").setDescription("Case number").setRequired(true).setMinValue(1)))
-    .addSubcommand((command) => command.setName("create").setDescription("Create a manual staff case")
-      .addUserOption((option) => option.setName("user").setDescription("User").setRequired(true))
-      .addStringOption((option) => option.setName("reason").setDescription("Case reason").setRequired(true).setMaxLength(1_000))
-      .addStringOption((option) => option.setName("internal-note").setDescription("Optional private context").setMaxLength(1_000)))
-    .addSubcommand((command) => command.setName("edit").setDescription("Edit a case with revision history")
-      .addIntegerOption((option) => option.setName("number").setDescription("Case number").setRequired(true).setMinValue(1))
-      .addStringOption((option) => option.setName("reason").setDescription("Updated reason").setMaxLength(1_000))
-      .addStringOption((option) => option.setName("internal-note").setDescription("Updated private note").setMaxLength(1_000)))
-    .addSubcommand((command) => command.setName("void").setDescription("Void a case without deleting it")
-      .addIntegerOption((option) => option.setName("number").setDescription("Case number").setRequired(true).setMinValue(1))
-      .addStringOption((option) => option.setName("reason").setDescription("Why this case is being voided").setRequired(true).setMaxLength(1_000)))
-    .addSubcommand((command) => command.setName("search").setDescription("Search recent cases")
-      .addUserOption((option) => option.setName("member").setDescription("Target member"))
-      .addUserOption((option) => option.setName("moderator").setDescription("Acting moderator"))
-      .addStringOption((option) => option.setName("action").setDescription("Action type").addChoices(...actions.map((value) => ({ name: value, value }))))
-      .addStringOption((option) => option.setName("status").setDescription("Case status").addChoices(...statuses.map((value) => ({ name: value, value }))))
-      .addStringOption((option) => option.setName("after").setDescription("Created after date (YYYY-MM-DD)"))
-      .addStringOption((option) => option.setName("before").setDescription("Created before date (YYYY-MM-DD)"))),
-  requirements: { moduleId: "moderation", featureId: "case-management", capability: "moderation.view", guildOnly: true, setupRequired: true, acknowledgement: "defer-ephemeral" },
+  data: new SlashCommandBuilder().setName("case").setDescription("View and manage user moderation cases")
+    .addSubcommand((command) => command.setName("view").setDescription("View one user case").addIntegerOption((option) => option.setName("number").setDescription("Case number").setRequired(true).setMinValue(1)))
+    .addSubcommand((command) => command.setName("create").setDescription("Create or append to a user's case")
+      .addUserOption((option) => option.setName("user").setDescription("Target user").setRequired(true))
+      .addStringOption((option) => option.setName("type").setDescription("Custom case type; defaults to None").setAutocomplete(true))
+      .addStringOption((option) => option.setName("action").setDescription("Optional Discord action").addChoices(...actionChoices))
+      .addStringOption((option) => option.setName("reason").setDescription("Reason or details").setMaxLength(1_000))
+      .addStringOption((option) => option.setName("duration").setDescription("Required for Timeout, for example 2h")))
+    .addSubcommand((command) => command.setName("reset").setDescription("Permanently reset all moderation cases and custom types")),
+  requirements: { moduleId: "moderation", featureId: "cases", nativeUserPermission: PermissionFlagsBits.ViewAuditLog, guildOnly: true, setupRequired: true, acknowledgement: "immediate" },
   async execute(client, interaction) {
-    if (!interaction.isChatInputCommand()) return;
-    const { guild, actor } = requireGuildInteraction(interaction);
-    const module = moderation(client);
-    const config = await module.configs.get(guild.id);
-    requireCapability(actor, "moderation.view", config);
-    const subcommand = interaction.options.getSubcommand();
-
-    if (subcommand === "create") {
-      requireCapability(actor, "moderation.case.edit", config);
-      const target = interaction.options.getUser("user", true);
-      const internalNote = interaction.options.getString("internal-note");
-      const pending = await module.cases.create({ guildId: guild.id, targetUserId: target.id, actorId: actor.id, action: "manual", reason: validateReason(interaction.options.getString("reason", true)), idempotencyKey: interaction.id, ...(internalNote ? { internalNote: validateReason(internalNote) } : {}) });
-      const item = pending.status === "pending" ? await module.cases.transition(pending.id, "active", actor.id) : pending;
-      await replyPrivately(interaction, { embeds: [buildCaseEmbed(item, target)] });
+    if (!interaction.isChatInputCommand() || !interaction.inCachedGuild()) return;
+    const { guild, actor } = requireGuildInteraction(interaction), subcommand = interaction.options.getSubcommand();
+    if (subcommand === "reset") {
+      await requireModerationAccess(client, actor, PermissionFlagsBits.ManageGuild, true);
+      await interaction.showModal(new ModalBuilder().setCustomId(componentId("case_reset_modal", actor.id)).setTitle("Reset all moderation cases").addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("confirmation").setLabel("Type RESET CASES to confirm").setStyle(TextInputStyle.Short).setRequired(true))));
       return;
     }
-
-    if (subcommand === "search") {
-      const after = parseDate(interaction.options.getString("after"), "after");
-      const before = parseDate(interaction.options.getString("before"), "before");
-      const filters = {
-        targetUserId: interaction.options.getUser("member")?.id,
-        actorId: interaction.options.getUser("moderator")?.id,
-        action: interaction.options.getString("action") as ModerationAction | null,
-        status: interaction.options.getString("status") as ModerationCaseStatus | null,
-        ...(after ? { after } : {}), ...(before ? { before } : {}),
-      };
-      const results = await module.cases.search(guild.id, Object.fromEntries(Object.entries(filters).filter(([, value]) => value != null)), 100);
-      const token = module.searches.create(actor.id, guild.id, results);
-      await replyPrivately(interaction, buildSearchResults(results, actor.id, token));
-      return;
-    }
-
-    const item = await module.cases.getByNumber(guild.id, interaction.options.getInteger("number", true));
-    if (!item) throw new Error("That moderation case does not exist.");
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     if (subcommand === "view") {
-      const [target, evidence] = await Promise.all([client.users.fetch(item.targetUserId).catch(() => undefined), module.cases.listEvidence(item.id)]);
-      await replyPrivately(interaction, { embeds: [buildCaseEmbed(item, target, evidence.length)], components: [caseControls(item, actor.id)] });
-    } else if (subcommand === "edit") {
-      requireCapability(actor, "moderation.case.edit", config);
-      const reasonValue = interaction.options.getString("reason");
-      const noteValue = interaction.options.getString("internal-note");
-      if (!reasonValue && !noteValue) throw new Error("Provide a reason or internal note to update.");
-      const updated = await module.cases.edit(item.id, actor.id, { ...(reasonValue ? { reason: validateReason(reasonValue) } : {}), ...(noteValue ? { internalNote: validateReason(noteValue) } : {}) });
-      await replyPrivately(interaction, { embeds: [buildCaseEmbed(updated)] });
-    } else {
-      requireCapability(actor, "moderation.case.void", config);
-      const reason = validateReason(interaction.options.getString("reason", true));
-      const updated = await module.cases.transition(item.id, "voided", actor.id, { reason });
-      await replyPrivately(interaction, { embeds: [buildCaseEmbed(updated)] });
+      await replyPrivately(interaction, await buildCasePayload(client, guild.id, interaction.options.getInteger("number", true), actor.id));
+      return;
     }
+    const targetUser = interaction.options.getUser("user", true), action = interaction.options.getString("action") ?? "none", reason = interaction.options.getString("reason")?.trim();
+    const typeValue = interaction.options.getString("type"), customType = typeValue ? await moderation(client).cases.resolveCustomType(guild.id, typeValue) : undefined;
+    if (typeValue && !customType) throw new Error("That custom case type is stale or no longer exists.");
+    if (["warn", "timeout", "kick", "ban"].includes(action) && !reason) throw new Error("A reason is required for that action.");
+    let result;
+    const member = await guild.members.fetch(targetUser.id).catch(() => undefined);
+    if (action === "none") result = await moderation(client).cases.append({ guildId: guild.id, targetUserId: targetUser.id, actorId: actor.id, action: "manual", ...(reason ? { reason } : {}), ...(customType ? { customType } : {}), idempotencyKey: interaction.id });
+    else if (action === "create_channel") {
+      await requireModerationAccess(client, actor, PermissionFlagsBits.ManageChannels);
+      result = await moderation(client).cases.append({ guildId: guild.id, targetUserId: targetUser.id, actorId: actor.id, action: "create_channel", ...(reason ? { reason } : {}), ...(customType ? { customType } : {}), idempotencyKey: interaction.id });
+      const config = await moderation(client).configs.get(guild.id), botAdminRoleIds = await client.platform.settings.botAdminRoleIds(guild.id);
+      const allowedRoles = [...new Set([...config.moderatorRoleIds, ...botAdminRoleIds])];
+      const channel = await guild.channels.create({ name: `case-${result.case.caseNumber}-${sanitize(targetUser.username)}`, type: ChannelType.GuildText, ...(config.caseCategoryId ? { parent: config.caseCategoryId } : {}), permissionOverwrites: [
+        { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+        { id: targetUser.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+        ...allowedRoles.map((id) => ({ id, allow: new PermissionsBitField([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]) })),
+        { id: client.user!.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ReadMessageHistory] },
+      ], reason: `Private moderation case #${result.case.caseNumber}` });
+      await moderation(client).cases.updateEntryMetadata(guild.id, result.entry.id, { channelId: channel.id });
+    } else {
+      if (!member) throw new Error("That action requires a user who is currently in the server.");
+      const permission = action === "ban" ? PermissionFlagsBits.BanMembers : action === "kick" ? PermissionFlagsBits.KickMembers : PermissionFlagsBits.ModerateMembers;
+      await requireModerationAccess(client, actor, permission);
+      const context = { guild, actor, target: member, reason: reason!, idempotencyKey: interaction.id, ...(customType ? { customType } : {}) };
+      const outcome = action === "warn" ? await moderation(client).moderation.warn(context) : action === "timeout" ? await moderation(client).moderation.timeout(context, parseDuration(interaction.options.getString("duration") ?? "", MAX_TIMEOUT_MS)) : action === "kick" ? await moderation(client).moderation.kick(context) : await moderation(client).moderation.ban(context);
+      await replyPrivately(interaction, { embeds: [buildActionCard({ action: outcome.action, actor, target: targetUser, ...(reason ? { reason } : {}), ...(outcome.case ? { case: outcome.case } : {}), ...(outcome.entry ? { entry: outcome.entry } : {}) })] });
+      return;
+    }
+    await replyPrivately(interaction, await buildCasePayload(client, guild.id, result.case.caseNumber, actor.id));
+  },
+  async autocomplete(client, interaction) {
+    if (!interaction.guildId || await client.platform.settings.setupStatus(interaction.guildId) !== "configured" || !await client.platform.settings.isFeatureEnabled(interaction.guildId, "moderation", "cases")) { await interaction.respond([]); return; }
+    const focused = interaction.options.getFocused(true);
+    await interaction.respond(focused.name === "type" ? await moderation(client).cases.autocompleteTypes(interaction.guildId, String(focused.value)) : []);
   },
 } satisfies BotCommand;
 
-function parseDate(value: string | null, label: string): Date | undefined {
-  if (!value) return undefined;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error(`${label} must use YYYY-MM-DD.`);
-  const date = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) throw new Error(`${label} is not a valid date.`);
-  return date;
+export async function buildCasePayload(client: BotClient, guildId: string, caseNumber: number, actorId: string) {
+  const item = await moderation(client).cases.getByNumber(guildId, caseNumber);
+  if (!item) throw new Error("That moderation case does not exist.");
+  const [user, summary, timeline, adjacent] = await Promise.all([client.users.fetch(item.targetUserId).catch(() => undefined), moderation(client).cases.summary(guildId, item.targetUserId), moderation(client).cases.timeline(item.id, 1, 1), moderation(client).cases.adjacent(guildId, caseNumber)]);
+  return caseOverview({ case: item, ...(user ? { user } : {}), summary, ...(timeline?.entries[0] ? { latest: timeline.entries[0] } : {}), actorId, ...(adjacent.previous ? { previousNumber: adjacent.previous.caseNumber } : {}), ...(adjacent.next ? { nextNumber: adjacent.next.caseNumber } : {}) });
 }
+
+function sanitize(value: string): string { return value.toLocaleLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").slice(0, 60) || "user"; }

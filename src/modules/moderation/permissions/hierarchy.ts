@@ -7,7 +7,4 @@ export function validateTargetHierarchy(actor: GuildMember, target: GuildMember,
   if (bot.roles.highest.comparePositionTo(target.roles.highest) <= 0) {
     throw new Error("My highest role must be above the target's highest role.");
   }
-  if (actor.id !== actor.guild.ownerId && actor.roles.highest.comparePositionTo(target.roles.highest) <= 0) {
-    throw new Error("Your highest role must be above the target's highest role.");
-  }
 }

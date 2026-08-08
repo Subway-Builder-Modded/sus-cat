@@ -9,6 +9,5 @@ export default defineEvent({
   execute(client) {
     logger.info(`Connected as ${client.user?.tag ?? "unknown user"}`);
     for (const module of client.modules.all()) void module.initialize?.(client);
-    client.moderation?.expirations.start(client);
   },
 });

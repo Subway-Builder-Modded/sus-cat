@@ -10,7 +10,7 @@ import { configurationHome, featureConfigurationView, fieldEditor, moduleConfigu
 
 export async function handleConfigComponent(client: BotClient, interaction: RoutedComponentInteraction, action: string, parts: readonly string[]): Promise<void> {
   if (!interaction.inCachedGuild()) throw new Error("Configuration is only available in a server.");
-  requireConfigurationAccess(interaction.member);
+  await requireConfigurationAccess(client.platform.settings, interaction.member);
   const actorId = required(parts, 0);
   if (actorId !== interaction.user.id) throw new Error("This configuration panel belongs to another administrator.");
   const { settings, modules } = client.platform;
@@ -69,7 +69,7 @@ export async function handleConfigComponent(client: BotClient, interaction: Rout
     const body = events.map((event) => `<t:${Math.floor(event.createdAt.getTime() / 1_000)}:R> <@${event.actorId}> • **${event.moduleId}** • ${event.featureId ? `${event.featureId} • ` : ""}${event.key}`).join("\n") || "No configuration changes have been recorded.";
     return update(interaction, { embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle("Recent Configuration Changes").setDescription(body)], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(componentId("core", "config", "home", actorId)).setLabel("Back").setStyle(ButtonStyle.Secondary))] });
   }
-  if (action === "reset_prompt") return update(interaction, { embeds: [warningEmbed("Reset all configuration?", "This disables the bot until setup is completed again. Historical moderation data is preserved.")], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(componentId("core", "config", "reset_confirm", actorId)).setLabel("Yes, reset configuration").setStyle(ButtonStyle.Danger), new ButtonBuilder().setCustomId(componentId("core", "config", "home", actorId)).setLabel("Cancel").setStyle(ButtonStyle.Secondary))] });
+  if (action === "reset_prompt") return update(interaction, { embeds: [warningEmbed("Reset options", "Use `/case reset` to reset moderation history only. Use `/resetsetup` for the transactional nuclear reset of setup, configuration, and module-owned guild data. Both require strong confirmation.")], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(componentId("core", "config", "home", actorId)).setLabel("Back").setStyle(ButtonStyle.Secondary))] });
   if (action === "reset_module_prompt") {
     const moduleId = required(parts, 1), module = modules.require(moduleId);
     return update(interaction, { embeds: [warningEmbed(`Reset ${module.manifest.name}?`, "Its switches and settings will return to manifest defaults. Historical module records are preserved.")], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(componentId("core", "config", "reset_module_confirm", actorId, moduleId)).setLabel("Reset Module").setStyle(ButtonStyle.Danger), new ButtonBuilder().setCustomId(componentId("core", "config", "module_direct", actorId, moduleId)).setLabel("Cancel").setStyle(ButtonStyle.Secondary))] });
@@ -78,10 +78,6 @@ export async function handleConfigComponent(client: BotClient, interaction: Rout
     const moduleId = required(parts, 1);
     await settings.resetModule(interaction.guildId, moduleId, actorId);
     return update(interaction, await moduleConfigurationView(settings, modules, interaction.guildId, moduleId, actorId));
-  }
-  if (action === "reset_confirm") {
-    await settings.reset(interaction.guildId, actorId);
-    return update(interaction, { embeds: [successEmbed("Configuration reset", "Historical records were preserved. Run `/setup` to configure the bot again.")], components: [] });
   }
 }
 

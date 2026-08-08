@@ -1,9 +1,9 @@
-# Initial Setup
+# Initial setup
 
-A new guild is `unconfigured`. Normal module commands and components fail closed with guidance until an administrator completes `/setup`.
+An unconfigured guild can execute only `/setup`; every other command and component fails closed with setup guidance. Discord may still display globally registered commands, because availability is enforced by the dispatcher rather than per-guild registration.
 
-The Discord-native wizard chooses modules, selects their features, renders required fields from manifests, collects channels and roles, and shows a review screen. Finish remains disabled while required configuration is missing. Before completion, configured channels are fetched again and checked for View Channel, Send Messages, and Embed Links.
+Initial setup requires the guild owner, Administrator, or Manage Server. After a setup has completed, configured Bot Admin roles can rerun it. The wizard separates selections from navigation: select menus save draft state, while explicit Back and Continue buttons move between Welcome, Bot Admin Roles, Modules, per-module Features, manifest-declared required configuration, permission review, and Finish. Keeping all defaults or selecting no optional features never prevents Continue.
 
-Only the guild owner, Administrator, or Manage Server can operate setup. The durable state moves from `unconfigured` to `configuring` and finally `configured`; the completion actor, version, and timestamp are persisted. `/setup`, `/help`, and `/status` remain available before completion. `/config` redirects unconfigured guilds back to setup.
+Bot Admin roles are core configuration and grant full bot access. Moderator roles are Moderation configuration and bypass only ordinary user-side moderation permissions. Required channels are re-fetched at Finish and checked for View Channel, Send Messages, and Embed Links. Enabled feature bot permissions are reviewed independently.
 
-Existing guilds migrated from legacy moderation configuration remain `unconfigured` because old data cannot prove setup completion or current channel permissions. Their values are preserved and prefilled for review.
+`/resetsetup` requires destructive administration access and typing the exact server name. Core invokes each module's reset hook in one transaction, removes Bot Admin roles, setup state, module/feature configuration, and module-owned guild data, then requires `/setup` again.

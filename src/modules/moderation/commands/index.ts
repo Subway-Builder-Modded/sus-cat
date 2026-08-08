@@ -1,22 +1,18 @@
 import addMessageEvidence from "./context/add-message-evidence.js";
-import moderateMessage from "./context/moderate-message.js";
-import moderationHistory from "./context/moderation-history.js";
-import quickModerate from "./context/quick-moderate.js";
 import ban from "./ban.js";
 import caseCommand from "./case.js";
-import history from "./history.js";
 import kick from "./kick.js";
 import lock from "./lock.js";
-import mod from "./mod.js";
-import nick from "./nick.js";
-import note from "./note.js";
+import moderation from "./moderation.js";
+import nickname from "./nickname.js";
 import purge from "./purge.js";
 import slowmode from "./slowmode.js";
-import softban from "./softban.js";
+import sudo from "./sudo.js";
 import timeout from "./timeout.js";
 import unban from "./unban.js";
 import unlock from "./unlock.js";
 import untimeout from "./untimeout.js";
+import user from "./user.js";
 import warn from "./warn.js";
 
-export const moderationCommands = [ban, caseCommand, history, kick, lock, mod, nick, note, purge, slowmode, softban, timeout, unban, unlock, untimeout, warn, addMessageEvidence, moderateMessage, moderationHistory, quickModerate] as const;
+export const moderationCommands = [ban, caseCommand, kick, lock, moderation, nickname, purge, slowmode, sudo, timeout, unban, unlock, untimeout, user, warn, addMessageEvidence] as const;

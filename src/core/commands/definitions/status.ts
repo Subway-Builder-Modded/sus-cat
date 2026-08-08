@@ -6,7 +6,7 @@ import { respond } from "../../interactions/response.js";
 
 export default {
   data: new SlashCommandBuilder().setName("status").setDescription("Show this server's bot setup status"),
-  requirements: { acknowledgement: "defer-ephemeral", guildOnly: true, setupRequired: false },
+  requirements: { acknowledgement: "defer-ephemeral", guildOnly: true, setupRequired: true },
   async execute(client, interaction) {
     if (!interaction.isChatInputCommand() || !interaction.guildId) return;
     const status = await client.platform.settings.setupStatus(interaction.guildId);

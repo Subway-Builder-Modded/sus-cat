@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 
 export type ConfirmationPayload =
-  | { type: "ban" | "softban"; guildId: string; actorId: string; targetId: string; reason: string; deleteSeconds: number; durationMs?: number; idempotencyKey: string }
-  | { type: "purge"; guildId: string; actorId: string; channelId: string; count: number; userId?: string; bots?: boolean; links?: boolean; attachments?: boolean; contains?: string; idempotencyKey: string };
+  | { type: "ban"; guildId: string; actorId: string; targetId: string; reason: string; deleteSeconds: number; silent: boolean; evidence?: string; idempotencyKey: string }
+  | { type: "purge"; guildId: string; actorId: string; channelIds: string[]; count: number; userId?: string; bots?: boolean; links?: boolean; attachments?: boolean; contains?: string; idempotencyKey: string };
 
 interface PendingConfirmation {
   payload: ConfirmationPayload;

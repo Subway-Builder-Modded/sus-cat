@@ -1,4 +1,4 @@
-import { ChannelType, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
+import { ChannelType, PermissionFlagsBits, SlashCommandBuilder, type TextChannel } from "discord.js";
 import type { BotCommand } from "../../../core/commands/command.js";
 import { moderation, requireGuildInteraction } from "../interactions/context.js";
 import { replyPrivately } from "../interactions/replies.js";
@@ -6,34 +6,40 @@ import { confirmationButtons } from "../ui/confirmation.js";
 import { confirmationEmbed, successEmbed } from "../ui/responses.js";
 
 export default {
-  data: new SlashCommandBuilder().setName("purge").setDescription("Delete recent messages using optional filters")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
-    .addIntegerOption((option) => option.setName("count").setDescription("Maximum messages to delete").setRequired(true).setMinValue(1).setMaxValue(100))
+  data: new SlashCommandBuilder().setName("purge").setDescription("Preview and delete matching messages")
+    .addIntegerOption((option) => option.setName("count").setDescription("Maximum matching messages").setRequired(true).setMinValue(1).setMaxValue(1000))
+    .addStringOption((option) => option.setName("scope").setDescription("Where to scan").addChoices({ name: "Current channel", value: "current" }, { name: "Selected channel", value: "selected" }, { name: "All accessible text channels", value: "all" }))
+    .addChannelOption((option) => option.setName("channel").setDescription("Channel used with Selected scope").addChannelTypes(ChannelType.GuildText))
     .addUserOption((option) => option.setName("user").setDescription("Only this author"))
     .addBooleanOption((option) => option.setName("bots").setDescription("Only bot messages"))
     .addBooleanOption((option) => option.setName("links").setDescription("Only messages containing links"))
     .addBooleanOption((option) => option.setName("attachments").setDescription("Only messages with attachments"))
     .addStringOption((option) => option.setName("contains").setDescription("Only messages containing this text").setMaxLength(100)),
-  requirements: { moduleId: "moderation", featureId: "purge", capability: "moderation.purge", guildOnly: true, setupRequired: true, acknowledgement: "defer-ephemeral" },
+  requirements: { moduleId: "moderation", featureId: "purge", nativeUserPermission: PermissionFlagsBits.ManageMessages, guildOnly: true, setupRequired: true, acknowledgement: "defer-ephemeral" },
   async execute(client, interaction) {
     if (!interaction.isChatInputCommand()) return;
-    const { guild, actor } = requireGuildInteraction(interaction);
-    if (!interaction.channel || interaction.channel.type !== ChannelType.GuildText) throw new Error("Purge can only be used in a server text channel.");
-    const module = moderation(client);
-    const count = interaction.options.getInteger("count", true);
-    const userId = interaction.options.getUser("user")?.id;
-    const bots = interaction.options.getBoolean("bots");
-    const links = interaction.options.getBoolean("links");
-    const attachments = interaction.options.getBoolean("attachments");
-    const contains = interaction.options.getString("contains");
-    const filters = { count, ...(userId ? { userId } : {}), ...(bots !== null ? { bots } : {}), ...(links !== null ? { links } : {}), ...(attachments !== null ? { attachments } : {}), ...(contains ? { contains } : {}) };
-    const config = await module.configs.get(guild.id);
-    if (count >= config.purgeConfirmationThreshold) {
-      const token = module.confirmations.create({ type: "purge", guildId: guild.id, actorId: actor.id, channelId: interaction.channel.id, ...filters, idempotencyKey: interaction.id });
-      await replyPrivately(interaction, { embeds: [confirmationEmbed("Confirm Purge", `Up to **${count}** matching messages will be permanently deleted from ${interaction.channel}. Messages older than 14 days cannot be bulk deleted and will be reported.`)], components: [confirmationButtons(token)] });
+    const { guild, actor } = requireGuildInteraction(interaction), module = moderation(client);
+    const channels = await resolveChannels(interaction.options.getString("scope") ?? "current", interaction.options.getChannel("channel")?.id, interaction.channelId, guild);
+    const filters = { count: interaction.options.getInteger("count", true), ...(interaction.options.getUser("user") ? { userId: interaction.options.getUser("user")!.id } : {}), ...(interaction.options.getBoolean("bots") === true ? { bots: true } : {}), ...(interaction.options.getBoolean("links") === true ? { links: true } : {}), ...(interaction.options.getBoolean("attachments") === true ? { attachments: true } : {}), ...(interaction.options.getString("contains") ? { contains: interaction.options.getString("contains")! } : {}) };
+    const preview = await module.channels.previewPurge(channels, filters), config = await module.configs.get(guild.id);
+    if (preview.matched === 0) { await replyPrivately(interaction, { embeds: [successEmbed("Nothing to purge", `Scanned **${preview.scanned}** messages and found no matches.`)] }); return; }
+    if (preview.matched >= config.purgeConfirmationThreshold || channels.length > 1) {
+      const token = module.confirmations.create({ type: "purge", guildId: guild.id, actorId: actor.id, channelIds: channels.map((channel) => channel.id), ...filters, idempotencyKey: interaction.id });
+      await replyPrivately(interaction, { embeds: [confirmationEmbed("Confirm Purge", `Found **${preview.matched}** matching messages across **${preview.channels}** channel${preview.channels === 1 ? "" : "s"}.\n\nScanned ${preview.scanned} messages. ${preview.tooOld ? `${preview.tooOld} matches are too old for Discord bulk deletion.` : "All matches are within the bulk-delete window."}`)], components: [confirmationButtons(token, `Delete ${preview.matched} Messages`)] });
       return;
     }
-    const result = await module.channels.purge(interaction.channel, actor, filters);
-    await replyPrivately(interaction, { embeds: [successEmbed("Purge complete", `Deleted **${result.deleted}** of ${result.matched} matching messages.${result.tooOld ? ` ${result.tooOld} were older than Discord's 14-day bulk-delete limit.` : ""}`)] });
+    const result = await module.channels.purge(channels, actor, filters);
+    await replyPrivately(interaction, { embeds: [successEmbed("Purge complete", purgeSummary(result))] });
   },
 } satisfies BotCommand;
+
+async function resolveChannels(scope: string, selectedId: string | undefined, currentId: string, guild: import("discord.js").Guild): Promise<TextChannel[]> {
+  if (scope === "selected" && !selectedId) throw new Error("Choose a channel when using Selected scope.");
+  const ids = scope === "all" ? [...guild.channels.cache.values()].filter((channel): channel is TextChannel => channel.type === ChannelType.GuildText && channel.viewable).map((channel) => channel.id) : [scope === "selected" ? selectedId! : currentId];
+  const channels = await Promise.all(ids.slice(0, 50).map((id) => guild.channels.fetch(id)));
+  return channels.filter((channel): channel is TextChannel => channel?.type === ChannelType.GuildText && channel.viewable);
+}
+
+export function purgeSummary(result: { deleted: number; matched: number; tooOld: number; failed: number; channels: number }): string {
+  return `Deleted **${result.deleted}** of **${result.matched}** matches across **${result.channels}** channel${result.channels === 1 ? "" : "s"}.${result.tooOld ? ` ${result.tooOld} were older than 14 days.` : ""}${result.failed ? ` ${result.failed} failed Discord deletion and were not counted as deleted.` : ""}`;
+}

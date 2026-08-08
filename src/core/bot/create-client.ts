@@ -9,7 +9,7 @@ import { createDatabase } from "../database/client.js";
 
 export function createBotClient(databaseUrl?: string): BotClient {
   const modules = createModuleRegistry();
-  const client = new BotClient({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] }, modules);
+  const client = new BotClient({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildModeration, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] }, modules);
   if (databaseUrl) {
     const database = createDatabase(databaseUrl);
     const settings = new GuildConfigService(new GuildConfigRepository(database.db), modules);

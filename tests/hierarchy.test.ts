@@ -13,8 +13,8 @@ describe("moderator hierarchy", () => {
     expect(() => validateTargetHierarchy(actor as never, member("owner", 1) as never, member("bot", 20) as never)).toThrow("server owner");
   });
 
-  it("requires both actor and bot to outrank the target", () => {
-    expect(() => validateTargetHierarchy(member("actor", 5) as never, member("target", 10) as never, member("bot", 20) as never)).toThrow("Your highest role");
+  it("enforces bot hierarchy without inventing an actor hierarchy restriction", () => {
+    expect(() => validateTargetHierarchy(member("actor", 5) as never, member("target", 10) as never, member("bot", 20) as never)).not.toThrow();
     expect(() => validateTargetHierarchy(member("actor", 20) as never, member("target", 10) as never, member("bot", 5) as never)).toThrow("My highest role");
   });
 });

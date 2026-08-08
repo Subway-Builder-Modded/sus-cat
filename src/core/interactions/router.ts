@@ -22,16 +22,19 @@ export async function routeComponent(client: BotClient, interaction: Interaction
     }
     const module = client.modules.require(route.owner);
     if (!interaction.guildId) throw new Error("This control can only be used in a server.");
-    if (await client.platform.settings.setupStatus(interaction.guildId) !== "configured" && route.owner !== "documentation") throw new Error("This server has not completed setup.");
-    if (!await client.platform.settings.isModuleEnabled(interaction.guildId, route.owner)) throw new Error(`${module.manifest.name} is disabled in this server.`);
+    if (await client.platform.settings.setupStatus(interaction.guildId) !== "configured") throw new Error("This server has not completed setup. Run `/setup` before using other bot controls.");
+    const isConfigurationComponent = module.isConfigurationComponent?.(route.action) ?? false;
+    if (!isConfigurationComponent && !await client.platform.settings.isModuleEnabled(interaction.guildId, route.owner)) throw new Error(`${module.manifest.name} is disabled in this server.`);
     const feature = module.featureForComponent?.(route.action);
-    if (feature && !await client.platform.settings.isFeatureEnabled(interaction.guildId, route.owner, feature)) throw new Error(`${module.manifest.features.find((item) => item.id === feature)?.name ?? feature} is disabled in this server.`);
-    if (feature && interaction.appPermissions) {
+    if (!isConfigurationComponent && feature && !await client.platform.settings.isFeatureEnabled(interaction.guildId, route.owner, feature)) throw new Error(`${module.manifest.features.find((item) => item.id === feature)?.name ?? feature} is disabled in this server.`);
+    if (!isConfigurationComponent && feature && interaction.appPermissions) {
       const definition = module.manifest.features.find((item) => item.id === feature);
       if ((definition?.requiredBotPermissions ?? []).some((permission) => !interaction.appPermissions?.has(permission))) throw new Error(`I am missing Discord permissions required by ${definition?.name ?? feature}.`);
     }
-    const issue = (await client.platform.settings.configurationIssues(interaction.guildId, route.owner))[0];
-    if (issue) throw new Error(`Configuration required: ${issue.message}.`);
+    if (!isConfigurationComponent) {
+      const issue = (await client.platform.settings.configurationIssues(interaction.guildId, route.owner))[0];
+      if (issue) throw new Error(`Configuration required: ${issue.message}.`);
+    }
     if (!module.handleComponent) throw new Error("This module does not handle interactive controls.");
     await module.handleComponent(client, interaction, route.action, route.parts);
   } catch (error: unknown) {

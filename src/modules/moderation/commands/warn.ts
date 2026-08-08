@@ -1,24 +1,22 @@
 import { PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import type { BotCommand } from "../../../core/commands/command.js";
 import { moderation, requireGuildInteraction, requireTargetMember } from "../interactions/context.js";
-import { replyWithCase } from "../interactions/replies.js";
-import { safeUrl } from "../utils/validation.js";
+import { replyWithOutcome } from "../interactions/replies.js";
+import { attachActionEvidence } from "./action-evidence.js";
 
 export default {
-  data: new SlashCommandBuilder().setName("warn").setDescription("Issue a formal warning to a member")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+  data: new SlashCommandBuilder().setName("warn").setDescription("Issue a formal warning")
     .addUserOption((option) => option.setName("user").setDescription("Member to warn").setRequired(true))
     .addStringOption((option) => option.setName("reason").setDescription("Reason for the warning").setMaxLength(1_000).setRequired(true))
-    .addStringOption((option) => option.setName("evidence").setDescription("Optional message link or evidence URL")),
-  requirements: { moduleId: "moderation", featureId: "warnings", capability: "moderation.warn", guildOnly: true, setupRequired: true, acknowledgement: "defer-ephemeral" },
+    .addBooleanOption((option) => option.setName("silent").setDescription("Skip case history and user notification"))
+    .addStringOption((option) => option.setName("evidence").setDescription("Optional evidence text or link").setMaxLength(1_000)),
+  requirements: { moduleId: "moderation", featureId: "warnings", nativeUserPermission: PermissionFlagsBits.ModerateMembers, guildOnly: true, setupRequired: true, acknowledgement: "defer-ephemeral" },
   async execute(client, interaction) {
     if (!interaction.isChatInputCommand()) return;
-    const { guild, actor } = requireGuildInteraction(interaction);
-    const target = await requireTargetMember(interaction);
-    const evidenceValue = interaction.options.getString("evidence");
-    const evidence = evidenceValue ? safeUrl(evidenceValue) : undefined;
-    const item = await moderation(client).moderation.warn({ guild, actor, target, idempotencyKey: interaction.id, reason: interaction.options.getString("reason", true), ...(evidence ? { source: { url: evidence } } : {}) });
-    if (evidence) await moderation(client).cases.addEvidence({ caseId: item.id, guildId: guild.id, actorId: actor.id, type: "url", source: evidence });
-    await replyWithCase(interaction, item);
+    const { guild, actor } = requireGuildInteraction(interaction), target = await requireTargetMember(interaction);
+    const reason = interaction.options.getString("reason", true), silent = interaction.options.getBoolean("silent") ?? false, evidence = interaction.options.getString("evidence");
+    const outcome = await moderation(client).moderation.warn({ guild, actor, target, reason, silent, idempotencyKey: interaction.id });
+    await attachActionEvidence(client, { guildId: guild.id, actorId: actor.id, interactionId: interaction.id, evidence, outcome, result: "warn", silent });
+    await replyWithOutcome(interaction, { outcome, actor, target, reason, ...(evidence && !silent ? { evidence } : {}) });
   },
 } satisfies BotCommand;

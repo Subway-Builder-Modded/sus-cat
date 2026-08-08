@@ -19,6 +19,7 @@ export const guildSettings = pgTable("guild_settings", {
   setupVersion: integer("setup_version").notNull().default(1),
   setupCompletedAt: timestamp("setup_completed_at", { withTimezone: true }),
   setupCompletedBy: varchar("setup_completed_by", { length: 20 }),
+  botAdminRoleIds: jsonb("bot_admin_role_ids").$type<string[]>().notNull().default([]),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

@@ -1,104 +1,96 @@
-import {
-  boolean,
-  type AnyPgColumn,
-  index,
-  integer,
-  jsonb,
-  pgEnum,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-  varchar,
-} from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
 
-export const caseAction = pgEnum("moderation_action", [
-  "warn", "note", "timeout", "untimeout", "kick", "ban", "unban", "softban", "nick", "manual", "automated",
+export const caseEntryAction = pgEnum("moderation_entry_action", [
+  "manual", "warn", "timeout", "untimeout", "kick", "ban", "unban", "create_channel",
+  "legacy_note", "legacy_softban", "legacy_automated",
 ]);
-export const caseStatus = pgEnum("moderation_case_status", [
-  "pending", "active", "expired", "reversed", "voided", "superseded", "failed",
-]);
-export const evidenceType = pgEnum("moderation_evidence_type", ["message", "note", "attachment", "url"]);
-export const dmStatus = pgEnum("moderation_dm_status", ["sent", "failed", "disabled"]);
-export const scheduledStatus = pgEnum("moderation_scheduled_status", ["pending", "processing", "completed", "failed"]);
+export const evidenceResult = pgEnum("moderation_evidence_result", ["none", "warn", "timeout", "kick", "ban", "unban", "untimeout"]);
 
 export const guildCaseCounters = pgTable("moderation_guild_case_counters", {
   guildId: varchar("guild_id", { length: 20 }).primaryKey(),
   nextCaseNumber: integer("next_case_number").notNull().default(1),
 });
 
-export const moderationCases = pgTable("moderation_cases", {
+export const moderationUserCases = pgTable("moderation_user_cases", {
   id: uuid("id").primaryKey().defaultRandom(),
-  caseNumber: integer("case_number").notNull(),
   guildId: varchar("guild_id", { length: 20 }).notNull(),
+  caseNumber: integer("case_number").notNull(),
   targetUserId: varchar("target_user_id", { length: 20 }).notNull(),
-  actorId: varchar("actor_id", { length: 20 }).notNull(),
-  action: caseAction("action").notNull(),
-  reason: text("reason").notNull(),
-  internalNote: text("internal_note"),
-  durationMs: integer("duration_ms"),
-  expiresAt: timestamp("expires_at", { withTimezone: true }),
-  status: caseStatus("status").notNull().default("pending"),
-  automated: boolean("automated").notNull().default(false),
-  relatedCaseId: uuid("related_case_id").references((): AnyPgColumn => moderationCases.id),
-  sourceChannelId: varchar("source_channel_id", { length: 20 }),
-  sourceMessageId: varchar("source_message_id", { length: 20 }),
-  sourceUrl: text("source_url"),
-  dmDeliveryStatus: dmStatus("dm_delivery_status"),
-  idempotencyKey: varchar("idempotency_key", { length: 100 }).notNull(),
-  auditMetadata: jsonb("audit_metadata").$type<Record<string, unknown>>().notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
-  uniqueIndex("moderation_cases_guild_number_unique").on(table.guildId, table.caseNumber),
-  uniqueIndex("moderation_cases_idempotency_unique").on(table.guildId, table.idempotencyKey),
-  index("moderation_cases_target_history_idx").on(table.guildId, table.targetUserId, table.createdAt),
-  index("moderation_cases_status_expiration_idx").on(table.status, table.expiresAt),
-  index("moderation_cases_actor_idx").on(table.guildId, table.actorId),
+  uniqueIndex("moderation_user_cases_guild_target_unique").on(table.guildId, table.targetUserId),
+  uniqueIndex("moderation_user_cases_guild_number_unique").on(table.guildId, table.caseNumber),
+  index("moderation_user_cases_target_idx").on(table.guildId, table.targetUserId),
 ]);
 
-export const moderationCaseRevisions = pgTable("moderation_case_revisions", {
+export const moderationCustomCaseTypes = pgTable("moderation_custom_case_types", {
   id: uuid("id").primaryKey().defaultRandom(),
-  caseId: uuid("case_id").notNull().references(() => moderationCases.id),
-  actorId: varchar("actor_id", { length: 20 }).notNull(),
-  field: varchar("field", { length: 40 }).notNull(),
-  previousValue: text("previous_value"),
-  nextValue: text("next_value"),
+  guildId: varchar("guild_id", { length: 20 }).notNull(),
+  name: varchar("name", { length: 80 }).notNull(),
+  normalizedName: varchar("normalized_name", { length: 80 }).notNull(),
+  color: integer("color").notNull(),
+  emoji: varchar("emoji", { length: 100 }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-}, (table) => [index("moderation_case_revisions_case_idx").on(table.caseId, table.createdAt)]);
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+}, (table) => [
+  uniqueIndex("moderation_custom_types_name_unique").on(table.guildId, table.normalizedName).where(sql`${table.deletedAt} IS NULL`),
+  index("moderation_custom_types_guild_idx").on(table.guildId, table.deletedAt),
+]);
+
+export const moderationCustomCaseTypeAliases = pgTable("moderation_custom_case_type_aliases", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  guildId: varchar("guild_id", { length: 20 }).notNull(),
+  customTypeId: uuid("custom_type_id").notNull().references(() => moderationCustomCaseTypes.id, { onDelete: "cascade" }),
+  alias: varchar("alias", { length: 80 }).notNull(),
+  normalizedAlias: varchar("normalized_alias", { length: 80 }).notNull(),
+}, (table) => [
+  uniqueIndex("moderation_custom_alias_guild_unique").on(table.guildId, table.normalizedAlias),
+  index("moderation_custom_alias_type_idx").on(table.customTypeId),
+]);
+
+export const moderationCaseEntries = pgTable("moderation_case_entries", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  caseId: uuid("case_id").notNull().references(() => moderationUserCases.id, { onDelete: "cascade" }),
+  guildId: varchar("guild_id", { length: 20 }).notNull(),
+  actorId: varchar("actor_id", { length: 20 }).notNull(),
+  action: caseEntryAction("action").notNull(),
+  customTypeId: uuid("custom_type_id").references(() => moderationCustomCaseTypes.id, { onDelete: "set null" }),
+  customTypeName: varchar("custom_type_name", { length: 80 }),
+  customTypeColor: integer("custom_type_color"),
+  customTypeEmoji: varchar("custom_type_emoji", { length: 100 }),
+  reason: text("reason"),
+  durationMs: integer("duration_ms"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  idempotencyKey: varchar("idempotency_key", { length: 100 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("moderation_case_entries_idempotency_unique").on(table.guildId, table.idempotencyKey),
+  index("moderation_case_entries_timeline_idx").on(table.caseId, table.createdAt),
+  index("moderation_case_entries_action_idx").on(table.guildId, table.action, table.createdAt),
+]);
 
 export const moderationEvidence = pgTable("moderation_evidence", {
   id: uuid("id").primaryKey().defaultRandom(),
-  caseId: uuid("case_id").notNull().references(() => moderationCases.id),
+  caseId: uuid("case_id").notNull().references(() => moderationUserCases.id, { onDelete: "cascade" }),
+  caseEntryId: uuid("case_entry_id").references(() => moderationCaseEntries.id, { onDelete: "set null" }),
   guildId: varchar("guild_id", { length: 20 }).notNull(),
   addedById: varchar("added_by_id", { length: 20 }).notNull(),
-  type: evidenceType("type").notNull(),
-  source: text("source").notNull(),
+  evidence: text("evidence").notNull(),
   description: text("description"),
+  result: evidenceResult("result").notNull().default("none"),
   metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-}, (table) => [index("moderation_evidence_case_idx").on(table.caseId, table.createdAt)]);
-
-export const moderationNotes = pgTable("moderation_notes", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  guildId: varchar("guild_id", { length: 20 }).notNull(),
-  targetUserId: varchar("target_user_id", { length: 20 }).notNull(),
-  authorId: varchar("author_id", { length: 20 }).notNull(),
-  caseId: uuid("case_id").references(() => moderationCases.id),
-  content: text("content").notNull(),
+  idempotencyKey: varchar("idempotency_key", { length: 100 }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-}, (table) => [index("moderation_notes_target_idx").on(table.guildId, table.targetUserId, table.createdAt)]);
-
-export const moderationNoteRevisions = pgTable("moderation_note_revisions", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  noteId: uuid("note_id").notNull().references(() => moderationNotes.id),
-  actorId: varchar("actor_id", { length: 20 }).notNull(),
-  previousContent: text("previous_content").notNull(),
-  nextContent: text("next_content").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("moderation_evidence_idempotency_unique").on(table.guildId, table.idempotencyKey),
+  index("moderation_evidence_case_idx").on(table.caseId, table.createdAt),
+  index("moderation_evidence_entry_idx").on(table.caseEntryId),
+]);
 
 export const moderationAuditEvents = pgTable("moderation_audit_events", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -106,12 +98,30 @@ export const moderationAuditEvents = pgTable("moderation_audit_events", {
   guildId: varchar("guild_id", { length: 20 }).notNull(),
   actorId: varchar("actor_id", { length: 20 }).notNull(),
   targetUserId: varchar("target_user_id", { length: 20 }),
-  caseId: uuid("case_id").references(() => moderationCases.id),
+  caseId: uuid("case_id"),
+  caseEntryId: uuid("case_entry_id"),
+  sourceEventId: varchar("source_event_id", { length: 100 }),
   before: jsonb("before_value").$type<Record<string, unknown>>(),
   after: jsonb("after_value").$type<Record<string, unknown>>(),
   metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-}, (table) => [index("moderation_audit_guild_idx").on(table.guildId, table.createdAt)]);
+}, (table) => [
+  index("moderation_audit_guild_idx").on(table.guildId, table.createdAt),
+  uniqueIndex("moderation_audit_source_unique").on(table.guildId, table.sourceEventId),
+]);
+
+export const moderationActionReceipts = pgTable("moderation_action_receipts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  guildId: varchar("guild_id", { length: 20 }).notNull(),
+  idempotencyKey: varchar("idempotency_key", { length: 100 }).notNull(),
+  action: varchar("action", { length: 40 }).notNull(),
+  actorId: varchar("actor_id", { length: 20 }).notNull(),
+  targetUserId: varchar("target_user_id", { length: 20 }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("moderation_action_receipts_key_unique").on(table.guildId, table.idempotencyKey),
+  index("moderation_action_receipts_guild_idx").on(table.guildId, table.createdAt),
+]);
 
 export const moderationLockStates = pgTable("moderation_lock_states", {
   channelId: varchar("channel_id", { length: 20 }).primaryKey(),
@@ -122,43 +132,19 @@ export const moderationLockStates = pgTable("moderation_lock_states", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const moderationScheduledActions = pgTable("moderation_scheduled_actions", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  guildId: varchar("guild_id", { length: 20 }).notNull(),
-  targetUserId: varchar("target_user_id", { length: 20 }).notNull(),
-  caseId: uuid("case_id").notNull().references(() => moderationCases.id),
-  action: varchar("action", { length: 40 }).notNull(),
-  executeAt: timestamp("execute_at", { withTimezone: true }).notNull(),
-  status: scheduledStatus("status").notNull().default("pending"),
-  attempts: integer("attempts").notNull().default(0),
-  lastError: text("last_error"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-}, (table) => [
-  index("moderation_scheduled_due_idx").on(table.status, table.executeAt),
-  uniqueIndex("moderation_scheduled_case_action_unique").on(table.caseId, table.action),
-]);
+export type ModerationUserCase = typeof moderationUserCases.$inferSelect;
+export type ModerationCaseEntry = typeof moderationCaseEntries.$inferSelect;
+export type ModerationEvidence = typeof moderationEvidence.$inferSelect;
+export type ModerationCustomCaseType = typeof moderationCustomCaseTypes.$inferSelect;
 
-export const moderationDmAttempts = pgTable("moderation_dm_attempts", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  caseId: uuid("case_id").notNull().references(() => moderationCases.id),
-  status: dmStatus("status").notNull(),
-  errorCode: varchar("error_code", { length: 80 }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
-
-export type ModerationCase = typeof moderationCases.$inferSelect;
 export interface ModerationConfig {
   readonly guildId: string;
-  readonly modLogChannelId: string | null;
+  readonly moderationLogChannelId: string | null;
   readonly auditLogChannelId: string | null;
-  readonly dmUsers: boolean;
+  readonly caseCategoryId: string | null;
+  readonly moderatorRoleIds: string[];
   readonly rulesUrl: string | null;
   readonly purgeConfirmationThreshold: number;
-  readonly staffRoleIds: string[];
-  readonly reasonPresets: string[];
-  readonly notesEnabled: boolean;
-  readonly temporaryBansEnabled: boolean;
-  readonly caseButtonsEnabled: boolean;
-  readonly updatedAt: Date;
+  readonly purgeScanLimit: number;
+  readonly auditScope: "moderation" | "full";
 }

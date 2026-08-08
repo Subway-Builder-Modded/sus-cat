@@ -1,5 +1,5 @@
 export type ConfigValue = boolean | string | number | string[] | null;
-export type ConfigType = "boolean" | "string" | "integer" | "channel" | "role" | "url" | "enum" | "string-list" | "role-list" | "channel-list" | "duration";
+export type ConfigType = "boolean" | "string" | "integer" | "channel" | "category" | "role" | "url" | "enum" | "string-list" | "role-list" | "channel-list" | "duration";
 
 export interface RequiredWhen {
   readonly featureId: string;

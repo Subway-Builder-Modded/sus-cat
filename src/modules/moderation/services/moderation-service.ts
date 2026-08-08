@@ -1,197 +1,116 @@
-import { EmbedBuilder, type Guild, type GuildMember, type User } from "discord.js";
+import type { Guild, GuildMember, User } from "discord.js";
 
-import type { ModerationCase, ModerationConfig } from "../database/schema.js";
 import { logger } from "../../../core/shared/logger.js";
 import { toError } from "../../../core/shared/to-error.js";
-import type { CaseSource, ModerationAction } from "../domain/types.js";
-import type { Capability } from "../permissions/capabilities.js";
-import { requireCapability } from "../permissions/capabilities.js";
+import type { ModerationCaseEntry, ModerationCustomCaseType, ModerationUserCase } from "../database/schema.js";
+import type { ModerationAction } from "../domain/types.js";
 import { validateTargetHierarchy } from "../permissions/hierarchy.js";
 import type { CaseRepository } from "../repositories/case-repository.js";
 import type { ModerationSettings } from "../config/settings.js";
-import { buildCaseEmbed } from "../ui/case-embed.js";
-import { caseControls } from "../ui/case-controls.js";
-import { moderationColors } from "../ui/theme.js";
-import { formatDuration } from "../utils/duration.js";
+import { buildActionCard } from "../ui/actions/action-card.js";
+import { sendActionNotice } from "../ui/actions/dm-notice.js";
 import { validateReason } from "../utils/validation.js";
 
-interface ActionContext {
+export interface ActionContext {
   guild: Guild;
   actor: GuildMember;
   target: GuildMember;
   idempotencyKey: string;
   reason: string;
-  source?: CaseSource;
+  silent?: boolean;
+  customType?: ModerationCustomCaseType;
+}
+
+export interface ActionOutcome {
+  readonly action: ModerationAction;
+  readonly case?: ModerationUserCase;
+  readonly entry?: ModerationCaseEntry;
+  readonly dmDelivered?: boolean;
 }
 
 export class ModerationService {
   constructor(private readonly cases: CaseRepository, private readonly configs: ModerationSettings) {}
 
-  async warn(context: ActionContext): Promise<ModerationCase> {
-    return this.recordOnly(context, "warn", "moderation.warn", true);
+  warn(context: ActionContext): Promise<ActionOutcome> { return this.perform(context, "warn", async () => undefined); }
+  timeout(context: ActionContext, durationMs: number): Promise<ActionOutcome> {
+    return this.perform(context, "timeout", () => context.target.timeout(durationMs, validateReason(context.reason)), { durationMs, expiresAt: new Date(Date.now() + durationMs) });
+  }
+  untimeout(context: ActionContext): Promise<ActionOutcome> {
+    return this.perform(context, "untimeout", () => context.target.timeout(null, validateReason(context.reason)));
+  }
+  kick(context: ActionContext): Promise<ActionOutcome> {
+    return this.perform(context, "kick", () => context.target.kick(validateReason(context.reason)), { notifyBefore: true });
+  }
+  ban(context: ActionContext, deleteMessageSeconds = 0): Promise<ActionOutcome> {
+    return this.perform(context, "ban", () => context.guild.members.ban(context.target.id, { reason: validateReason(context.reason), deleteMessageSeconds }), { notifyBefore: true, metadata: { deleteMessageSeconds } });
   }
 
-  async note(context: ActionContext): Promise<ModerationCase> {
-    const config = await this.authorize(context, "moderation.note", false);
-    if (!config.notesEnabled) throw new Error("Staff notes are disabled in this server.");
-    const item = await this.cases.create({ ...baseCase(context, "note"), internalNote: validateReason(context.reason) });
-    if (item.status !== "pending") return item;
-    await this.cases.addNote({ guildId: context.guild.id, targetUserId: context.target.id, actorId: context.actor.id, content: item.reason, caseId: item.id });
-    const active = await this.cases.transition(item.id, "active", context.actor.id);
-    await this.publishLog(context.guild, config, active, true);
-    return active;
-  }
-
-  async timeout(context: ActionContext, durationMs: number): Promise<ModerationCase> {
-    const expiresAt = new Date(Date.now() + durationMs);
-    const item = await this.execute(context, "timeout", "moderation.timeout", { durationMs, expiresAt }, async () => {
-      await context.target.timeout(durationMs, validateReason(context.reason));
-    });
-    await this.cases.schedule(item.id, item.guildId, item.targetUserId, "timeout_expire", expiresAt);
-    return item;
-  }
-
-  async untimeout(context: ActionContext, relatedCaseId?: string): Promise<ModerationCase> {
-    return this.execute(context, "untimeout", "moderation.timeout", { ...(relatedCaseId ? { relatedCaseId } : {}) }, async () => {
-      await context.target.timeout(null, validateReason(context.reason));
-    });
-  }
-
-  async kick(context: ActionContext): Promise<ModerationCase> {
-    return this.execute(context, "kick", "moderation.kick", {}, () => context.target.kick(validateReason(context.reason)));
-  }
-
-  async ban(context: ActionContext, options: { deleteMessageSeconds?: number; durationMs?: number } = {}): Promise<ModerationCase> {
-    if (options.durationMs) {
-      const config = await this.configs.get(context.guild.id);
-      if (!config.temporaryBansEnabled) throw new Error("Temporary bans are disabled in this server.");
+  async unban(input: Omit<ActionContext, "target"> & { target: User }): Promise<ActionOutcome> {
+    const reason = validateReason(input.reason);
+    if (!await this.cases.reserveAction(input.guild.id, input.actor.id, input.target.id, input.idempotencyKey, "unban")) {
+      const duplicate = await this.cases.findEntryByIdempotency(input.guild.id, input.idempotencyKey);
+      if (duplicate) return { action: "unban", ...duplicate };
+      throw new Error("This interaction has already been processed.");
     }
-    const item = await this.execute(context, "ban", "moderation.ban", {
-      ...(options.durationMs ? { durationMs: options.durationMs, expiresAt: new Date(Date.now() + options.durationMs) } : {}),
-    }, () => context.guild.members.ban(context.target.id, { reason: validateReason(context.reason), deleteMessageSeconds: options.deleteMessageSeconds ?? 0 }));
-    if (options.durationMs && item.expiresAt) await this.cases.schedule(item.id, item.guildId, item.targetUserId, "unban", item.expiresAt);
-    return item;
+    await input.guild.members.unban(input.target.id, reason);
+    return this.finish({ guild: input.guild, actor: input.actor, idempotencyKey: input.idempotencyKey, ...(input.silent === undefined ? {} : { silent: input.silent }), ...(input.customType ? { customType: input.customType } : {}) }, "unban", input.target, { reason });
   }
 
-  async unban(input: Omit<ActionContext, "target"> & { target: User; relatedCaseId?: string }): Promise<ModerationCase> {
-    const config = await this.configs.get(input.guild.id);
-    requireCapability(input.actor, "moderation.unban", config);
-    const item = await this.cases.create({ ...baseCase(input, "unban"), ...(input.relatedCaseId ? { relatedCaseId: input.relatedCaseId } : {}) });
-    try {
-      await input.guild.members.unban(input.target.id, validateReason(input.reason));
-      const active = await this.cases.transition(item.id, "active", input.actor.id);
-      await this.publishLog(input.guild, config, active);
-      return active;
-    } catch (error: unknown) {
-      await this.cases.transition(item.id, "failed", input.actor.id, { error: toError(error).name });
+  async nickname(context: Omit<ActionContext, "reason">, nickname: string | null): Promise<void> {
+    const bot = context.guild.members.me;
+    if (!bot) throw new Error("Bot member information is unavailable.");
+    validateTargetHierarchy(context.actor, context.target, bot);
+    if (!await this.cases.reserveAction(context.guild.id, context.actor.id, context.target.id, context.idempotencyKey, "nickname")) throw new Error("This interaction has already been processed.");
+    const before = context.target.nickname ?? context.target.displayName;
+    await context.target.setNickname(nickname);
+    if (await this.configs.feature(context.guild.id, "audit-log")) await this.cases.audit("member.nickname", context.guild.id, context.actor.id, undefined, context.target.id, { before, after: nickname });
+    await this.publish(context.guild, "nickname", context.actor, context.target.user, { details: [{ name: "Before", value: before, inline: true }, { name: "After", value: nickname ?? "Server default", inline: true }] });
+  }
+
+  private async perform(context: ActionContext, action: ModerationAction, operation: () => Promise<unknown>, options: { durationMs?: number; expiresAt?: Date; notifyBefore?: boolean; metadata?: Record<string, unknown> } = {}): Promise<ActionOutcome> {
+    const reason = validateReason(context.reason);
+    const bot = context.guild.members.me;
+    if (!bot) throw new Error("Bot member information is unavailable.");
+    validateTargetHierarchy(context.actor, context.target, bot);
+    if (!await this.cases.reserveAction(context.guild.id, context.actor.id, context.target.id, context.idempotencyKey, action)) {
+      const duplicate = await this.cases.findEntryByIdempotency(context.guild.id, context.idempotencyKey);
+      if (duplicate) return { action, ...duplicate };
+      throw new Error("This interaction has already been processed.");
+    }
+    const notifications = await this.configs.feature(context.guild.id, "user-notifications");
+    let dmDelivered: boolean | undefined;
+    if (notifications && !context.silent && options.notifyBefore) dmDelivered = await this.notify(context.guild, context.target.user, action, reason, options);
+    try { await operation(); }
+    catch (error: unknown) {
+      if (await this.configs.feature(context.guild.id, "audit-log")) await this.cases.audit("action.failed", context.guild.id, context.actor.id, undefined, context.target.id, { action, error: toError(error).name }, undefined, undefined, undefined, `failed:${context.idempotencyKey}`);
       throw error;
     }
+    if (notifications && !context.silent && !options.notifyBefore) dmDelivered = await this.notify(context.guild, context.target.user, action, reason, options);
+    return this.finish(context, action, context.target.user, { reason, ...options, ...(dmDelivered === undefined ? {} : { dmDelivered }) });
   }
 
-  async softban(context: ActionContext, deleteMessageSeconds = 86_400): Promise<ModerationCase> {
-    return this.execute(context, "softban", "moderation.ban", {}, async () => {
-      await context.guild.members.ban(context.target.id, { reason: validateReason(context.reason), deleteMessageSeconds });
-      await context.guild.members.unban(context.target.id, "Softban completed");
-    });
+  private async finish(context: Omit<ActionContext, "target" | "reason">, action: ModerationAction, target: User, options: { reason: string; durationMs?: number; expiresAt?: Date; metadata?: Record<string, unknown>; dmDelivered?: boolean }): Promise<ActionOutcome> {
+    let record: { case: ModerationUserCase; entry: ModerationCaseEntry } | undefined;
+    if (!context.silent && await this.configs.feature(context.guild.id, "cases")) record = await this.cases.append({ guildId: context.guild.id, targetUserId: target.id, actorId: context.actor.id, action, reason: options.reason, idempotencyKey: context.idempotencyKey, metadata: { ...(options.metadata ?? {}), ...(options.expiresAt ? { expiresAt: options.expiresAt.toISOString() } : {}) }, ...(options.durationMs ? { durationMs: options.durationMs } : {}), ...(context.customType ? { customType: context.customType } : {}) });
+    if (await this.configs.feature(context.guild.id, "audit-log")) await this.cases.audit("action.completed", context.guild.id, context.actor.id, record?.case.id, target.id, { action, silent: Boolean(context.silent), dmDelivered: options.dmDelivered, ...options.metadata }, record?.entry.id, undefined, undefined, `completed:${context.idempotencyKey}`);
+    await this.publish(context.guild, action, context.actor, target, { reason: options.reason, ...(options.durationMs ? { durationMs: options.durationMs } : {}), ...(record ? { case: record.case, entry: record.entry } : {}) });
+    return { action, ...(record ?? {}), ...(options.dmDelivered === undefined ? {} : { dmDelivered: options.dmDelivered }) };
   }
 
-  async nick(context: ActionContext, nickname: string | null): Promise<ModerationCase> {
-    return this.execute(context, "nick", "moderation.nick", { metadata: { nickname } }, () => context.target.setNickname(nickname, validateReason(context.reason)));
+  private async notify(guild: Guild, user: User, action: ModerationAction, reason: string, options: { durationMs?: number; expiresAt?: Date }): Promise<boolean> {
+    const config = await this.configs.get(guild.id);
+    return sendActionNotice(user, { action, guild, reason, rulesUrl: config.rulesUrl, ...options });
   }
 
-  async reverseCase(item: ModerationCase, actor: GuildMember, reason: string): Promise<ModerationCase> {
-    const config = await this.configs.get(item.guildId);
-    const guild = actor.guild;
-    if (item.action === "ban") {
-      requireCapability(actor, "moderation.unban", config);
-      await guild.members.unban(item.targetUserId, validateReason(reason));
-    } else if (item.action === "timeout") {
-      requireCapability(actor, "moderation.timeout", config);
-      const target = await guild.members.fetch(item.targetUserId);
-      await target.timeout(null, validateReason(reason));
-    } else {
-      throw new Error("This case does not represent a reversible active punishment.");
-    }
-    const reversed = await this.cases.transition(item.id, "reversed", actor.id, { reason });
-    await this.cases.cancelScheduled(item.id);
-    return reversed;
-  }
-
-  private async recordOnly(context: ActionContext, action: ModerationAction, capability: Capability, hierarchy = false): Promise<ModerationCase> {
-    const config = await this.authorize(context, capability, hierarchy);
-    const item = await this.cases.create(baseCase(context, action));
-    if (item.status !== "pending") return item;
-    const active = await this.cases.transition(item.id, "active", context.actor.id);
-    await this.notifyAndLog(context.guild, context.target.user, config, active);
-    return active;
-  }
-
-  private async execute(context: ActionContext, action: ModerationAction, capability: Capability, extra: Partial<Parameters<CaseRepository["create"]>[0]>, operation: () => Promise<unknown>): Promise<ModerationCase> {
-    const config = await this.authorize(context, capability, true);
-    const item = await this.cases.create({ ...baseCase(context, action), ...extra });
-    if (item.status !== "pending") return item;
+  private async publish(guild: Guild, action: ModerationAction | "nickname", actor: GuildMember, target: User, details: Omit<Parameters<typeof buildActionCard>[0], "action" | "actor" | "target">): Promise<void> {
+    if (!await this.configs.feature(guild.id, "moderation-log")) return;
+    const config = await this.configs.get(guild.id);
+    if (!config.moderationLogChannelId) return;
     try {
-      await operation();
-      const active = await this.cases.transition(item.id, "active", context.actor.id);
-      await this.notifyAndLog(context.guild, context.target.user, config, active);
-      return active;
+      const channel = await guild.channels.fetch(config.moderationLogChannelId);
+      if (channel?.isSendable()) await channel.send({ embeds: [buildActionCard({ ...details, action, actor, target })], allowedMentions: { parse: [] } });
     } catch (error: unknown) {
-      await this.cases.transition(item.id, "failed", context.actor.id, { error: toError(error).name });
-      throw error;
+      logger.warn("Unable to publish moderation log", { guildId: guild.id, action, error: toError(error).message });
     }
   }
-
-  private async authorize(context: ActionContext, capability: Capability, hierarchy: boolean): Promise<ModerationConfig> {
-    const config = await this.configs.get(context.guild.id);
-    requireCapability(context.actor, capability, config);
-    if (hierarchy) {
-      const bot = context.guild.members.me;
-      if (!bot) throw new Error("Bot member information is unavailable.");
-      validateTargetHierarchy(context.actor, context.target, bot);
-    }
-    validateReason(context.reason);
-    return config;
-  }
-
-  private async notifyAndLog(guild: Guild, user: User, config: ModerationConfig, item: ModerationCase): Promise<void> {
-    if (!config.dmUsers) {
-      await this.cases.recordDm(item.id, "disabled");
-    } else {
-      try {
-        const embed = new EmbedBuilder().setColor(moderationColors.info).setTitle(`Moderation notice from ${guild.name}`).setDescription(item.reason).addFields({ name: "Action", value: item.action.toUpperCase(), inline: true }, { name: "Case", value: `#${item.caseNumber}`, inline: true });
-        if (item.durationMs) embed.addFields({ name: "Duration", value: formatDuration(item.durationMs), inline: true });
-        if (item.expiresAt) embed.addFields({ name: "Expires", value: `<t:${Math.floor(item.expiresAt.getTime() / 1_000)}:F>` });
-        if (config.rulesUrl) embed.addFields({ name: "Server rules", value: config.rulesUrl });
-        await user.send({ embeds: [embed], allowedMentions: { parse: [] } });
-        await this.cases.recordDm(item.id, "sent");
-      } catch (error: unknown) {
-        await this.cases.recordDm(item.id, "failed", toError(error).name);
-      }
-    }
-    await this.publishLog(guild, config, item);
-  }
-
-  private async publishLog(guild: Guild, config: ModerationConfig, item: ModerationCase, privateOnly = false): Promise<void> {
-    const channelId = privateOnly ? config.auditLogChannelId : config.modLogChannelId;
-    if (!channelId) return;
-    try {
-      const channel = await guild.channels.fetch(channelId);
-      if (!channel?.isSendable()) return;
-      await channel.send({ embeds: [buildCaseEmbed(item)], components: config.caseButtonsEnabled ? [caseControls(item, "any")] : [], allowedMentions: { parse: [] } });
-    } catch (error: unknown) {
-      logger.warn("Unable to publish moderation log", { guildId: guild.id, caseNumber: item.caseNumber, error: toError(error).message });
-    }
-  }
-}
-
-function baseCase(context: Omit<ActionContext, "target"> & { target: GuildMember | User }, action: ModerationAction) {
-  return {
-    guildId: context.guild.id,
-    targetUserId: context.target.id,
-    actorId: context.actor.id,
-    action,
-    reason: validateReason(context.reason),
-    idempotencyKey: context.idempotencyKey,
-    ...(context.source ? { source: context.source } : {}),
-  };
 }

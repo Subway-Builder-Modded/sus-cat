@@ -1,62 +1,111 @@
 import { PermissionsBitField, type Guild, type InteractionUpdateOptions } from "discord.js";
+import { eq } from "drizzle-orm";
+
 import type { BotClient } from "../bot/bot-client.js";
+import { configurationAuditEvents, guildFeatures, guildModules, guildSettings } from "../database/schema.js";
 import type { RoutedComponentInteraction } from "../interactions/types.js";
 import { respond, type SafeReplyOptions } from "../interactions/response.js";
 import { requireConfigurationAccess } from "../permissions/configuration.js";
 import { successEmbed } from "../ui/embeds.js";
-import { featureSelectionView, moduleSelectionView, reviewView, setupConfigurationView } from "./views.js";
+import { botAdminRolesView, featureSelectionView, moduleSelectionView, reviewView, setupConfigurationView, welcomeView } from "./views.js";
 
 export async function handleSetupComponent(client: BotClient, interaction: RoutedComponentInteraction, action: string, parts: readonly string[]): Promise<void> {
   if (!interaction.inCachedGuild()) throw new Error("Setup is only available in a server.");
-  requireConfigurationAccess(interaction.member);
+  await requireConfigurationAccess(client.platform.settings, interaction.member);
   const actorId = required(parts, 0);
   if (actorId !== interaction.user.id) throw new Error("This setup panel belongs to another administrator.");
   const { settings, modules } = client.platform;
 
-  if (action === "start" || action === "back") {
-    await settings.beginSetup(interaction.guildId, interaction.user.id);
-    await update(interaction, await moduleSelectionView(settings, modules, interaction.guildId, actorId));
+  if (action === "reset_modal" && interaction.isModalSubmit()) {
+    if (interaction.fields.getTextInputValue("guild_name") !== interaction.guild.name) throw new Error("The server name did not match. Nothing was reset.");
+    await client.platform.database.db.transaction(async (tx) => {
+      for (const module of modules.all()) await module.resetGuild?.(interaction.guildId, tx);
+      await tx.delete(configurationAuditEvents).where(eq(configurationAuditEvents.guildId, interaction.guildId));
+      await tx.delete(guildFeatures).where(eq(guildFeatures.guildId, interaction.guildId));
+      await tx.delete(guildModules).where(eq(guildModules.guildId, interaction.guildId));
+      await tx.delete(guildSettings).where(eq(guildSettings.guildId, interaction.guildId));
+    });
+    await respond(interaction, { embeds: [successEmbed("Server reset complete", "Setup, roles, module configuration, cases, evidence, counters, and module-owned guild data were removed. Run `/setup` to configure the server again.")] });
     return;
   }
+
+  if (action === "start") {
+    await settings.beginSetup(interaction.guildId, interaction.user.id);
+    return update(interaction, await botAdminRolesView(settings, interaction.guildId, actorId));
+  }
+  if (action === "welcome") return update(interaction, welcomeView(actorId));
+  if (action === "back_admin") return update(interaction, await botAdminRolesView(settings, interaction.guildId, actorId));
+  if (action === "admin_roles" && interaction.isRoleSelectMenu()) {
+    await settings.setBotAdminRoles(interaction.guildId, interaction.values, actorId);
+    return update(interaction, await botAdminRolesView(settings, interaction.guildId, actorId));
+  }
+  if (action === "continue_admin") return update(interaction, await moduleSelectionView(settings, modules, interaction.guildId, actorId));
   if (action === "modules" && interaction.isStringSelectMenu()) {
     for (const module of modules.all()) await settings.setModuleEnabled(interaction.guildId, module.manifest.id, interaction.values.includes(module.manifest.id), actorId);
-    const first = modules.all().find((module) => interaction.values.includes(module.manifest.id));
-    await update(interaction, first ? await featureSelectionView(settings, modules, interaction.guildId, first.manifest.id, actorId) : await reviewView(settings, modules, interaction.guildId, actorId, await setupPermissionIssues(interaction.guild, client)));
-    return;
+    return update(interaction, await moduleSelectionView(settings, modules, interaction.guildId, actorId));
+  }
+  if (action === "continue_modules") {
+    const enabled = await enabledModules(client, interaction.guildId);
+    return update(interaction, enabled[0] ? await featureSelectionView(settings, modules, interaction.guildId, enabled[0].manifest.id, actorId) : await review(client, interaction.guild, actorId));
   }
   if (action === "features" && interaction.isStringSelectMenu()) {
     const moduleId = required(parts, 1);
     const module = modules.require(moduleId);
     for (const feature of [...module.manifest.features].reverse()) if (!interaction.values.includes(feature.id)) await settings.setFeatureEnabled(interaction.guildId, moduleId, feature.id, false, actorId);
     for (const feature of module.manifest.features) if (interaction.values.includes(feature.id)) await settings.setFeatureEnabled(interaction.guildId, moduleId, feature.id, true, actorId);
-    await update(interaction, await setupConfigurationView(settings, modules, interaction.guildId, moduleId, actorId));
-    return;
+    return update(interaction, await featureSelectionView(settings, modules, interaction.guildId, moduleId, actorId));
   }
+  if (action === "back_features") {
+    const moduleId = required(parts, 1);
+    const enabled = await enabledModules(client, interaction.guildId);
+    const previous = enabled[enabled.findIndex((module) => module.manifest.id === moduleId) - 1];
+    return update(interaction, previous ? await setupConfigurationView(settings, modules, interaction.guildId, previous.manifest.id, actorId) : await moduleSelectionView(settings, modules, interaction.guildId, actorId));
+  }
+  if (action === "continue_features") return update(interaction, await setupConfigurationView(settings, modules, interaction.guildId, required(parts, 1), actorId));
   if (action === "channel" && interaction.isChannelSelectMenu()) {
-    await settings.setConfig(interaction.guildId, required(parts, 1), required(parts, 2), required(interaction.values, 0), actorId);
-    await update(interaction, await setupConfigurationView(settings, modules, interaction.guildId, required(parts, 1), actorId));
-    return;
+    const moduleId = required(parts, 1), key = required(parts, 2);
+    await settings.setConfig(interaction.guildId, moduleId, key, interaction.values[0] ?? null, actorId);
+    return update(interaction, await setupConfigurationView(settings, modules, interaction.guildId, moduleId, actorId));
   }
   if (action === "roles" && interaction.isRoleSelectMenu()) {
-    await settings.setConfig(interaction.guildId, required(parts, 1), required(parts, 2), interaction.values, actorId);
-    await update(interaction, await setupConfigurationView(settings, modules, interaction.guildId, required(parts, 1), actorId));
-    return;
+    const moduleId = required(parts, 1), key = required(parts, 2);
+    await settings.setConfig(interaction.guildId, moduleId, key, interaction.values, actorId);
+    return update(interaction, await setupConfigurationView(settings, modules, interaction.guildId, moduleId, actorId));
   }
-  if (action === "continue") {
+  if (action === "enum" && interaction.isStringSelectMenu()) {
+    const moduleId = required(parts, 1), key = required(parts, 2);
+    await settings.setConfig(interaction.guildId, moduleId, key, required(interaction.values, 0), actorId);
+    return update(interaction, await setupConfigurationView(settings, modules, interaction.guildId, moduleId, actorId));
+  }
+  if (action === "back_config") return update(interaction, await featureSelectionView(settings, modules, interaction.guildId, required(parts, 1), actorId));
+  if (action === "continue_config") {
     const currentId = required(parts, 1);
-    const enabled = [];
-    for (const module of modules.all()) if (await settings.isModuleEnabled(interaction.guildId, module.manifest.id)) enabled.push(module);
+    const enabled = await enabledModules(client, interaction.guildId);
     const next = enabled[enabled.findIndex((module) => module.manifest.id === currentId) + 1];
-    await update(interaction, next ? await featureSelectionView(settings, modules, interaction.guildId, next.manifest.id, actorId) : await reviewView(settings, modules, interaction.guildId, actorId, await setupPermissionIssues(interaction.guild, client)));
-    return;
+    return update(interaction, next ? await featureSelectionView(settings, modules, interaction.guildId, next.manifest.id, actorId) : await review(client, interaction.guild, actorId));
+  }
+  if (action === "back_review") {
+    const enabled = await enabledModules(client, interaction.guildId);
+    const previous = enabled.at(-1);
+    return update(interaction, previous ? await setupConfigurationView(settings, modules, interaction.guildId, previous.manifest.id, actorId) : await moduleSelectionView(settings, modules, interaction.guildId, actorId));
   }
   if (action === "finish") {
     const permissionIssues = await setupPermissionIssues(interaction.guild, client);
     if (permissionIssues.length) throw new Error(`Missing bot permissions: ${permissionIssues.join("; ")}`);
     await validateSelectedChannels(client, interaction.guildId);
     await settings.completeSetup(interaction.guildId, actorId);
-    await update(interaction, { embeds: [successEmbed("Setup complete", "This server is configured. Enabled module commands are available immediately; use `/config` to make changes.")], components: [] });
+    await update(interaction, { embeds: [successEmbed("Setup complete", "This server is configured. Enabled features are available immediately; use `/config` or `/moderation config` to make changes.")], components: [] });
   }
+}
+
+async function enabledModules(client: BotClient, guildId: string) {
+  const enabled = [];
+  for (const module of client.platform.modules.all()) if (await client.platform.settings.isModuleEnabled(guildId, module.manifest.id)) enabled.push(module);
+  return enabled;
+}
+
+async function review(client: BotClient, guild: Guild, actorId: string) {
+  return reviewView(client.platform.settings, client.platform.modules, guild.id, actorId, await setupPermissionIssues(guild, client));
 }
 
 async function validateSelectedChannels(client: BotClient, guildId: string): Promise<void> {
@@ -69,8 +118,7 @@ async function validateSelectedChannels(client: BotClient, guildId: string): Pro
       if (typeof value !== "string" || !value) continue;
       const channel = await guild.channels.fetch(value).catch(() => undefined);
       if (!channel?.isSendable()) throw new Error(`${definition.label} no longer exists or cannot receive messages.`);
-      const permissions = channel.permissionsFor(guild.members.me!);
-      if (!permissions?.has(["ViewChannel", "SendMessages", "EmbedLinks"])) throw new Error(`I need View Channel, Send Messages, and Embed Links in ${channel}.`);
+      if (!channel.permissionsFor(guild.members.me!)?.has(["ViewChannel", "SendMessages", "EmbedLinks"])) throw new Error(`I need View Channel, Send Messages, and Embed Links in ${channel}.`);
     }
   }
 }
@@ -80,10 +128,7 @@ async function botPermissionIssues(guild: Guild, client: BotClient): Promise<str
   const issues = new Set<string>();
   for (const module of client.modules.all()) if (await client.platform.settings.isModuleEnabled(guild.id, module.manifest.id)) {
     for (const feature of module.manifest.features) if (await client.platform.settings.isFeatureEnabled(guild.id, module.manifest.id, feature.id)) {
-      for (const permission of feature.requiredBotPermissions ?? []) if (!me.permissions.has(permission)) {
-        const names = new PermissionsBitField(permission).toArray().join(", ");
-        issues.add(`${names} — required by ${module.manifest.name} → ${feature.name}`);
-      }
+      for (const permission of feature.requiredBotPermissions ?? []) if (!me.permissions.has(permission)) issues.add(`${new PermissionsBitField(permission).toArray().join(", ")} — required by ${module.manifest.name} → ${feature.name}`);
     }
   }
   return [...issues];

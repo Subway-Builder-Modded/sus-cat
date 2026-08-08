@@ -9,4 +9,13 @@ describe("modular platform migration", () => {
     expect(sql).toContain("'unconfigured'");
     expect(sql).not.toMatch(/DROP TABLE|TRUNCATE|DELETE FROM/i);
   });
+  it("groups legacy action cases into user cases and retires executable automation", async () => {
+    const sql = await readFile(new URL("../drizzle/0002_user_cases.sql", import.meta.url), "utf8");
+    expect(sql).toContain('GROUP BY "guild_id","target_user_id"');
+    expect(sql).toContain('INSERT INTO "moderation_case_entries"');
+    expect(sql).toContain("legacyEvidenceType");
+    expect(sql).toContain('DROP TABLE "moderation_scheduled_actions"');
+    expect(sql).toContain('CREATE TABLE "moderation_action_receipts"');
+    expect(sql).not.toMatch(/TRUNCATE|DROP DATABASE/i);
+  });
 });

@@ -7,12 +7,3 @@ export const moderationColors = {
   private: 0x9b59b6,
   inactive: 0x95a5a6,
 } as const;
-
-export const moderationIcons = {
-  case: "🛡️",
-  warning: "⚠️",
-  success: "✅",
-  note: "📝",
-  evidence: "🔎",
-  clock: "⏱️",
-} as const;

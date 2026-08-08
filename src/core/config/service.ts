@@ -15,16 +15,23 @@ export class GuildConfigService {
   async setupStatus(guildId: string): Promise<"unconfigured" | "configuring" | "configured"> {
     return (await this.repository.setup(guildId))?.setupStatus ?? "unconfigured";
   }
+  async botAdminRoleIds(guildId: string): Promise<string[]> {
+    const roles = (await this.repository.setup(guildId))?.botAdminRoleIds;
+    return Array.isArray(roles) && roles.every((role) => typeof role === "string") ? roles : [];
+  }
+  async hasCompletedSetup(guildId: string): Promise<boolean> {
+    return Boolean((await this.repository.setup(guildId))?.setupCompletedAt);
+  }
+  async setBotAdminRoles(guildId: string, roleIds: readonly string[], actorId: string): Promise<void> {
+    const before = await this.botAdminRoleIds(guildId);
+    await this.repository.setBotAdminRoles(guildId, roleIds);
+    await this.repository.audit(guildId, actorId, "core", "botAdminRoleIds", before, roleIds);
+  }
   async beginSetup(guildId: string, actorId: string): Promise<void> { await this.repository.setSetup(guildId, "configuring", actorId); }
   async completeSetup(guildId: string, actorId: string): Promise<void> {
     const issues = await this.configurationIssues(guildId);
     if (issues.length) throw new Error(`Configuration is incomplete: ${issues.map((issue) => issue.message).join("; ")}`);
     await this.repository.setSetup(guildId, "configured", actorId);
-  }
-  async reset(guildId: string, actorId: string): Promise<void> {
-    await this.repository.clearGuildConfiguration(guildId);
-    await this.repository.setSetup(guildId, "unconfigured", actorId);
-    await this.repository.audit(guildId, actorId, "core", "setup.reset", "configured", "unconfigured");
   }
   async resetModule(guildId: string, moduleId: string, actorId: string): Promise<void> {
     this.modules.require(moduleId);

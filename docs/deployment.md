@@ -21,6 +21,6 @@ Railway environments are isolated. A variable visible in Development or Preview 
 
 ## Data protection and recovery
 
-Enable Railway PostgreSQL backups appropriate to the plan, restrict project access, and never expose the public database URL unnecessarily. Before a risky schema migration, create or verify a backup. Moderation history, setup, configuration, audit, scheduled actions, and lock state all live in PostgreSQL.
+Enable Railway PostgreSQL backups appropriate to the plan, restrict project access, and never expose the public database URL unnecessarily. Before the user-case migration, create or verify a backup. Moderation history, setup, configuration, audit, and lock state all live in PostgreSQL; scheduled moderation automation has been removed.
 
 If application deployment fails, Railway keeps the prior healthy deployment active; fix or roll back the Git commit and redeploy. If migration fails, do not edit the already-applied migration or reset the database. Inspect the migration log, restore from a verified backup if data was changed, create a forward corrective migration, and redeploy. Rotate Discord/database credentials immediately if they are ever exposed.

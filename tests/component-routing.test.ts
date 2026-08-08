@@ -8,6 +8,9 @@ describe("module component routing", () => {
     const id = componentId("module", "moderation", "case_evidence", "actor", "case");
     expect(parseComponentId(id)).toEqual({ namespace: "module", owner: "moderation", action: "case_evidence", parts: ["actor", "case"] });
     expect(moderationModule.featureForComponent?.("case_evidence")).toBe("evidence");
+    expect(moderationModule.isConfigurationComponent?.("config_home")).toBe(true);
+    expect(moderationModule.isConfigurationComponent?.("modal_type_edit")).toBe(true);
+    expect(moderationModule.featureForComponent?.("config_home")).toBeUndefined();
   });
 
   it("rejects unsafe and oversized IDs", () => {

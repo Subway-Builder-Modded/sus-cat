@@ -6,6 +6,7 @@ import { errorEmbed, warningEmbed } from "../ui/embeds.js";
 import { logger } from "../shared/logger.js";
 import { toError } from "../shared/to-error.js";
 import type { BotCommand, BotCommandInteraction } from "./command.js";
+import { isBotAdmin } from "../permissions/configuration.js";
 
 export async function dispatchCommand(client: BotClient, interaction: BotCommandInteraction): Promise<void> {
   const command = client.commands.get(interaction.commandName);
@@ -40,6 +41,14 @@ export async function enforceCommandGate(client: BotClient, interaction: BotComm
   if (!interaction.guildId) return;
   const setupStatus = await client.platform.settings.setupStatus(interaction.guildId);
   if (requirements.setupRequired !== false && setupStatus !== "configured") throw new Error("This server has not completed setup. Ask an administrator to run `/setup`.");
+  if (requirements.nativeUserPermission && interaction.inCachedGuild()) {
+    const native = interaction.member.permissions.has(requirements.nativeUserPermission);
+    const botAdmin = await isBotAdmin(client.platform.settings, interaction.member);
+    const moduleAuthorized = requirements.moduleId
+      ? await client.modules.require(requirements.moduleId).authorizeCommand?.(client, interaction, requirements.nativeUserPermission) ?? false
+      : false;
+    if (!native && !botAdmin && !moduleAuthorized) throw new Error("You do not have permission to use this command in this server.");
+  }
   if (!requirements.moduleId) return;
   const module = client.modules.require(requirements.moduleId);
   if (!await client.platform.settings.isModuleEnabled(interaction.guildId, requirements.moduleId)) throw new Error(`${module.manifest.name} is disabled in this server.`);
@@ -47,7 +56,6 @@ export async function enforceCommandGate(client: BotClient, interaction: BotComm
     const feature = client.modules.require(requirements.moduleId).manifest.features.find((item) => item.id === requirements.featureId);
     throw new Error(`${feature?.name ?? requirements.featureId} is disabled in this server.`);
   }
-  if (requirements.capability && module.hasCapability && !await module.hasCapability(client, interaction.guildId, interaction.user.id, requirements.capability)) throw new Error(`You do not have the required capability: \`${requirements.capability}\`.`);
   if (requirements.featureId && interaction.appPermissions) {
     const feature = client.modules.require(requirements.moduleId).manifest.features.find((item) => item.id === requirements.featureId);
     const missing = (feature?.requiredBotPermissions ?? []).filter((permission) => !interaction.appPermissions?.has(permission));

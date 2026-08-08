@@ -7,6 +7,7 @@ import { logger } from "../shared/logger.js";
 import { toError } from "../shared/to-error.js";
 
 async function registerCommands(): Promise<void> {
+  logger.info("[discord] Registering production commands");
   const environment = loadEnvironment();
   const clientId = environment.discordClientId ?? requiredVariable("DISCORD_CLIENT_ID");
   const client = createBotClient();
@@ -23,7 +24,7 @@ async function registerCommands(): Promise<void> {
     : Routes.applicationCommands(clientId);
 
   await new REST().setToken(environment.discordToken).put(route, { body: definitions });
-  logger.info(`Registered ${definitions.length} command(s)`);
+  logger.info(`[discord] Registration complete: ${definitions.length} command(s)`);
 }
 
 registerCommands().catch((error: unknown) => {

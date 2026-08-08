@@ -11,6 +11,7 @@
     "check": "tsc --noEmit",
     "register": "tsx src/scripts/register-commands.ts",
     "register:prod": "node dist/scripts/register-commands.js",
+    "env:check": "node dist/scripts/check-environment.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node dist/scripts/migrate.js",
     "db:migrate:dev": "tsx src/scripts/migrate.ts",

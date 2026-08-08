@@ -11,7 +11,7 @@ Follow [Railway deployment](docs/DEPLOYMENT.md) to connect the GitHub repository
 Railway reads [railway.json](railway.json) and uses:
 
 - Build: `pnpm build`
-- Pre-deploy: `pnpm db:migrate && pnpm register:prod`
+- Pre-deploy: `pnpm env:check && pnpm db:migrate && pnpm register:prod`
 - Start: `pnpm start`
 - Readiness: `/healthz`
 

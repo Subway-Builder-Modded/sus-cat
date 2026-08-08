@@ -5,7 +5,7 @@
   },
   "deploy": {
     "preDeployCommand": [
-      "pnpm db:migrate && pnpm register:prod"
+      "pnpm env:check && pnpm db:migrate && pnpm register:prod"
     ],
     "startCommand": "pnpm start",
     "healthcheckPath": "/healthz",

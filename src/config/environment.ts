@@ -1,4 +1,10 @@
-import "dotenv/config";
+import { config as loadDotEnv } from "dotenv";
+
+// Railway injects production variables into process.env. A local .env file is
+// optional and must never overwrite values already supplied by the process.
+loadDotEnv({ override: false, quiet: true });
+
+export type EnvironmentSource = Readonly<Record<string, string | undefined>>;
 
 export interface Environment {
   readonly discordToken: string;
@@ -8,17 +14,20 @@ export interface Environment {
   readonly port: number;
 }
 
-export function loadEnvironment(options: { requireDatabase?: boolean } = {}): Environment {
-  const discordClientId = optionalVariable("DISCORD_CLIENT_ID");
-  const discordGuildId = optionalVariable("DISCORD_GUILD_ID");
+export function loadEnvironment(
+  options: { requireDatabase?: boolean } = {},
+  source: EnvironmentSource = process.env,
+): Environment {
+  const discordClientId = optionalVariable("DISCORD_CLIENT_ID", source);
+  const discordGuildId = optionalVariable("DISCORD_GUILD_ID", source);
   const databaseUrl = options.requireDatabase
-    ? requiredVariable("DATABASE_URL")
-    : optionalVariable("DATABASE_URL");
+    ? requiredVariable("DATABASE_URL", source)
+    : optionalVariable("DATABASE_URL", source);
 
-  const port = parsePort(optionalVariable("PORT") ?? "3000");
+  const port = parsePort(optionalVariable("PORT", source) ?? "3000");
 
   return {
-    discordToken: requiredVariable("DISCORD_TOKEN"),
+    discordToken: requiredVariable("DISCORD_TOKEN", source),
     ...(discordClientId ? { discordClientId } : {}),
     ...(discordGuildId ? { discordGuildId } : {}),
     ...(databaseUrl ? { databaseUrl } : {}),
@@ -32,13 +41,13 @@ function parsePort(value: string): number {
   return port;
 }
 
-export function requiredVariable(name: string): string {
-  const value = optionalVariable(name);
+export function requiredVariable(name: string, source: EnvironmentSource = process.env): string {
+  const value = optionalVariable(name, source);
   if (!value) throw new Error(`Missing required environment variable: ${name}`);
   return value;
 }
 
-function optionalVariable(name: string): string | undefined {
-  const value = process.env[name]?.trim();
+function optionalVariable(name: string, source: EnvironmentSource): string | undefined {
+  const value = source[name]?.trim();
   return value || undefined;
 }

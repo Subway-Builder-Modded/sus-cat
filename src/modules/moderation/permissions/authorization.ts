@@ -1,13 +1,14 @@
 import { PermissionFlagsBits, type GuildMember } from "discord.js";
 
 import type { BotClient } from "../../../core/bot/bot-client.js";
+import { requireModerationModule } from "../moderation-module.js";
 import { isBotAdmin } from "../../../core/permissions/configuration.js";
 
 export async function hasModerationAccess(client: BotClient, member: GuildMember, nativePermission: bigint, destructive = false): Promise<boolean> {
   if (member.id === member.guild.ownerId || member.permissions.has(PermissionFlagsBits.Administrator) || member.permissions.has(nativePermission)) return true;
   if (await isBotAdmin(client.platform.settings, member)) return true;
   if (destructive) return false;
-  const config = await client.moderation!.configs.get(member.guild.id);
+  const config = await requireModerationModule(client).configs.get(member.guild.id);
   return member.roles.cache.some((role) => config.moderatorRoleIds.includes(role.id));
 }
 

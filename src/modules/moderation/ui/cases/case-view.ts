@@ -6,7 +6,7 @@ import { componentId } from "../../utils/custom-id.js";
 import { actionPresentation } from "../actions/presentation.js";
 import { formatDuration } from "../../utils/duration.js";
 
-export function caseOverview(input: { case: ModerationUserCase; user?: User; summary: HistorySummary; latest?: ModerationCaseEntry; actorId: string; previousNumber?: number; nextNumber?: number }) {
+export function caseOverview(input: { case: ModerationUserCase; user?: User; summary: HistorySummary; latest?: ModerationCaseEntry; actorId: string; isEvidenceEnabled: boolean; previousNumber?: number; nextNumber?: number }) {
   const name = input.user?.username ?? `User ${input.case.targetUserId}`;
   const embed = new EmbedBuilder().setColor(0x5865f2).setTitle(`🛡️ Case #${input.case.caseNumber} • ${name}`).setDescription(`**User**\n${input.user ?? `<@${input.case.targetUserId}>`}\nID: \`${input.case.targetUserId}\``).addFields(
     { name: "Summary", value: `Warnings: **${input.summary.warnings}**\nTimeouts: **${input.summary.timeouts}**\nKicks: **${input.summary.kicks}**\nBans: **${input.summary.bans}**`, inline: true },
@@ -19,15 +19,15 @@ export function caseOverview(input: { case: ModerationUserCase; user?: User; sum
   }
   const first = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(componentId("case_timeline", input.actorId, input.case.id, "1")).setLabel("Timeline").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(componentId("case_evidence", input.actorId, input.case.id, "1")).setLabel("Evidence").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(componentId("user_view", input.actorId, input.case.targetUserId)).setLabel("User").setStyle(ButtonStyle.Secondary),
   );
+  if (input.isEvidenceEnabled) first.addComponents(new ButtonBuilder().setCustomId(componentId("case_evidence", input.actorId, input.case.id, "1")).setLabel("Evidence").setStyle(ButtonStyle.Secondary));
   const second = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(componentId("case_number", input.actorId, String(input.previousNumber ?? input.case.caseNumber))).setLabel("Previous").setStyle(ButtonStyle.Secondary).setDisabled(!input.previousNumber),
     new ButtonBuilder().setCustomId(componentId("case_number", input.actorId, String(input.nextNumber ?? input.case.caseNumber))).setLabel("Next").setStyle(ButtonStyle.Secondary).setDisabled(!input.nextNumber),
     new ButtonBuilder().setCustomId(componentId("case_back", input.actorId)).setLabel("Back").setStyle(ButtonStyle.Secondary),
   );
-  return { embeds: [embed], components: [first, second], allowedMentions: { parse: [] as never[] } };
+  return { embeds: [embed], components: [first, second], allowedMentions: { parse: [] } };
 }
 
 export function timelineView(input: { case: ModerationUserCase; entries: ModerationCaseEntry[]; page: number; pages: number; actorId: string }) {
@@ -37,7 +37,7 @@ export function timelineView(input: { case: ModerationUserCase; entries: Moderat
     return `${visual.emoji} ${type}**${visual.label}**\nModerator: <@${entry.actorId}> • <t:${Math.floor(entry.createdAt.getTime() / 1000)}:F>${entry.durationMs ? `\nDuration: ${formatDuration(entry.durationMs)}` : ""}${entry.reason ? `\nReason: ${entry.reason}` : ""}`;
   }).join("\n\n") || "No case entries yet.";
   const embed = new EmbedBuilder().setColor(0x5865f2).setTitle(`Case #${input.case.caseNumber} → Timeline`).setDescription(description).setFooter({ text: `Page ${input.page} of ${input.pages}` });
-  return { embeds: [embed], components: [pagination("case_timeline", input.actorId, input.case.id, input.page, input.pages), backRow("case_number", input.actorId, String(input.case.caseNumber))], allowedMentions: { parse: [] as never[] } };
+  return { embeds: [embed], components: [pagination("case_timeline", input.actorId, input.case.id, input.page, input.pages), backRow("case_number", input.actorId, String(input.case.caseNumber))], allowedMentions: { parse: [] } };
 }
 
 export function evidenceView(input: { case: ModerationUserCase; items: ModerationEvidence[]; index: number; actorId: string }) {
@@ -51,7 +51,7 @@ export function evidenceView(input: { case: ModerationUserCase; items: Moderatio
     new ButtonBuilder().setCustomId(componentId("case_evidence_edit", input.actorId, input.case.id, item?.id ?? "none")).setLabel("Edit").setStyle(ButtonStyle.Secondary).setDisabled(!item),
     new ButtonBuilder().setCustomId(componentId("case_evidence_delete", input.actorId, input.case.id, item?.id ?? "none")).setLabel("Delete").setStyle(ButtonStyle.Danger).setDisabled(!item),
   );
-  return { embeds: [embed], components: [controls, backRow("case_number", input.actorId, String(input.case.caseNumber))], allowedMentions: { parse: [] as never[] } };
+  return { embeds: [embed], components: [controls, backRow("case_number", input.actorId, String(input.case.caseNumber))], allowedMentions: { parse: [] } };
 }
 
 export function evidenceResultMenu(actorId: string, caseId: string, evidenceId: string) {

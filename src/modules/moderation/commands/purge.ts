@@ -4,6 +4,7 @@ import { moderation, requireGuildInteraction } from "../interactions/context.js"
 import { replyPrivately } from "../interactions/replies.js";
 import { confirmationButtons } from "../ui/confirmation.js";
 import { confirmationEmbed, successEmbed } from "../ui/responses.js";
+import { purgeSummary } from "../ui/purge-summary.js";
 
 export default {
   data: new SlashCommandBuilder().setName("purge").setDescription("Preview and delete matching messages")
@@ -20,26 +21,33 @@ export default {
     if (!interaction.isChatInputCommand()) return;
     const { guild, actor } = requireGuildInteraction(interaction), module = moderation(client);
     const channels = await resolveChannels(interaction.options.getString("scope") ?? "current", interaction.options.getChannel("channel")?.id, interaction.channelId, guild);
-    const filters = { count: interaction.options.getInteger("count", true), ...(interaction.options.getUser("user") ? { userId: interaction.options.getUser("user")!.id } : {}), ...(interaction.options.getBoolean("bots") === true ? { bots: true } : {}), ...(interaction.options.getBoolean("links") === true ? { links: true } : {}), ...(interaction.options.getBoolean("attachments") === true ? { attachments: true } : {}), ...(interaction.options.getString("contains") ? { contains: interaction.options.getString("contains")! } : {}) };
-    const preview = await module.channels.previewPurge(channels, filters), config = await module.configs.get(guild.id);
+    const selectedUser = interaction.options.getUser("user");
+    const contains = interaction.options.getString("contains");
+    const filters = { count: interaction.options.getInteger("count", true), ...(selectedUser ? { userId: selectedUser.id } : {}), ...(interaction.options.getBoolean("bots") === true ? { bots: true } : {}), ...(interaction.options.getBoolean("links") === true ? { links: true } : {}), ...(interaction.options.getBoolean("attachments") === true ? { attachments: true } : {}), ...(contains ? { contains } : {}) };
+    const preview = await module.purges.preview(channels, filters), config = await module.configs.get(guild.id);
     if (preview.matched === 0) { await replyPrivately(interaction, { embeds: [successEmbed("Nothing to purge", `Scanned **${preview.scanned}** messages and found no matches.`)] }); return; }
     if (preview.matched >= config.purgeConfirmationThreshold || channels.length > 1) {
       const token = module.confirmations.create({ type: "purge", guildId: guild.id, actorId: actor.id, channelIds: channels.map((channel) => channel.id), ...filters, idempotencyKey: interaction.id });
       await replyPrivately(interaction, { embeds: [confirmationEmbed("Confirm Purge", `Found **${preview.matched}** matching messages across **${preview.channels}** channel${preview.channels === 1 ? "" : "s"}.\n\nScanned ${preview.scanned} messages. ${preview.tooOld ? `${preview.tooOld} matches are too old for Discord bulk deletion.` : "All matches are within the bulk-delete window."}`)], components: [confirmationButtons(token, `Delete ${preview.matched} Messages`)] });
       return;
     }
-    const result = await module.channels.purge(channels, actor, filters);
+    const result = await module.purges.execute(channels, actor, filters, interaction.id);
     await replyPrivately(interaction, { embeds: [successEmbed("Purge complete", purgeSummary(result))] });
   },
 } satisfies BotCommand;
 
 async function resolveChannels(scope: string, selectedId: string | undefined, currentId: string, guild: import("discord.js").Guild): Promise<TextChannel[]> {
-  if (scope === "selected" && !selectedId) throw new Error("Choose a channel when using Selected scope.");
-  const ids = scope === "all" ? [...guild.channels.cache.values()].filter((channel): channel is TextChannel => channel.type === ChannelType.GuildText && channel.viewable).map((channel) => channel.id) : [scope === "selected" ? selectedId! : currentId];
+  let ids: string[];
+  if (scope === "all") {
+    ids = [...guild.channels.cache.values()]
+      .filter((channel): channel is TextChannel => channel.type === ChannelType.GuildText && channel.viewable)
+      .map((channel) => channel.id);
+  } else if (scope === "selected") {
+    if (!selectedId) throw new Error("Choose a channel when using Selected scope.");
+    ids = [selectedId];
+  } else {
+    ids = [currentId];
+  }
   const channels = await Promise.all(ids.slice(0, 50).map((id) => guild.channels.fetch(id)));
   return channels.filter((channel): channel is TextChannel => channel?.type === ChannelType.GuildText && channel.viewable);
-}
-
-export function purgeSummary(result: { deleted: number; matched: number; tooOld: number; failed: number; channels: number }): string {
-  return `Deleted **${result.deleted}** of **${result.matched}** matches across **${result.channels}** channel${result.channels === 1 ? "" : "s"}.${result.tooOld ? ` ${result.tooOld} were older than 14 days.` : ""}${result.failed ? ` ${result.failed} failed Discord deletion and were not counted as deleted.` : ""}`;
 }

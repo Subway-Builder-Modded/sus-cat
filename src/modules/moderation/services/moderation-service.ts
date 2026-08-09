@@ -1,15 +1,17 @@
 import type { Guild, GuildMember, User } from "discord.js";
 
 import { toError } from "../../../core/shared/to-error.js";
+import { logger } from "../../../core/shared/logger.js";
 import type { ModerationCaseEntry, ModerationCustomCaseType, ModerationUserCase } from "../database/schema.js";
 import type { ModerationAction } from "../domain/types.js";
 import { validateTargetHierarchy } from "../permissions/hierarchy.js";
 import type { CaseRepository } from "../repositories/case-repository.js";
+import type { ActionReceiptRepository } from "../repositories/action-receipt-repository.js";
+import type { AuditRepository } from "../repositories/audit-repository.js";
 import type { ModerationSettings } from "../config/settings.js";
-import { buildActionCard } from "../ui/actions/action-card.js";
-import { publishAuditLog } from "../ui/actions/audit-log-publisher.js";
-import { sendActionNotice } from "../ui/actions/dm-notice.js";
 import { validateReason } from "../utils/validation.js";
+import { notifyUserBestEffort, publishActionBestEffort, type ActionDelivery, type PublishedActionInput } from "./action-delivery.js";
+import { recordAuditIfEnabled } from "./audit-service.js";
 
 export interface ActionContext {
   guild: Guild;
@@ -29,7 +31,13 @@ export interface ActionOutcome {
 }
 
 export class ModerationService {
-  constructor(private readonly cases: CaseRepository, private readonly configs: ModerationSettings) {}
+  constructor(
+    private readonly cases: CaseRepository,
+    private readonly receipts: ActionReceiptRepository,
+    private readonly audits: AuditRepository,
+    private readonly configs: ModerationSettings,
+    private readonly delivery: ActionDelivery,
+  ) {}
 
   warn(context: ActionContext): Promise<ActionOutcome> { return this.perform(context, "warn", async () => undefined); }
   timeout(context: ActionContext, durationMs: number): Promise<ActionOutcome> {
@@ -47,23 +55,24 @@ export class ModerationService {
 
   async unban(input: Omit<ActionContext, "target"> & { target: User }): Promise<ActionOutcome> {
     const reason = validateReason(input.reason);
-    if (!await this.cases.reserveAction(input.guild.id, input.actor.id, input.target.id, input.idempotencyKey, "unban")) {
+    if (!await this.receipts.reserve({ guildId: input.guild.id, actorId: input.actor.id, targetUserId: input.target.id, idempotencyKey: input.idempotencyKey, action: "unban" })) {
       const duplicate = await this.cases.findEntryByIdempotency(input.guild.id, input.idempotencyKey);
       if (duplicate) return { action: "unban", ...duplicate };
       throw new Error("This interaction has already been processed.");
     }
     await input.guild.members.unban(input.target.id, reason);
-    return this.finish({ guild: input.guild, actor: input.actor, idempotencyKey: input.idempotencyKey, ...(input.silent === undefined ? {} : { silent: input.silent }), ...(input.customType ? { customType: input.customType } : {}) }, "unban", input.target, { reason });
+    try { return await this.finish({ guild: input.guild, actor: input.actor, idempotencyKey: input.idempotencyKey, ...(input.silent === undefined ? {} : { silent: input.silent }), ...(input.customType ? { customType: input.customType } : {}) }, "unban", input.target, { reason }); }
+    catch (error: unknown) { throw this.persistenceFailure("unban", input.guild.id, input.actor.id, input.target.id, error); }
   }
 
   async nickname(context: Omit<ActionContext, "reason">, nickname: string | null): Promise<void> {
     const bot = context.guild.members.me;
     if (!bot) throw new Error("Bot member information is unavailable.");
     validateTargetHierarchy(context.actor, context.target, bot);
-    if (!await this.cases.reserveAction(context.guild.id, context.actor.id, context.target.id, context.idempotencyKey, "nickname")) throw new Error("This interaction has already been processed.");
+    if (!await this.receipts.reserve({ guildId: context.guild.id, actorId: context.actor.id, targetUserId: context.target.id, idempotencyKey: context.idempotencyKey, action: "nickname" })) throw new Error("This interaction has already been processed.");
     const before = context.target.nickname ?? context.target.displayName;
     await context.target.setNickname(nickname);
-    if (await this.configs.feature(context.guild.id, "audit-log")) await this.cases.audit("member.nickname", context.guild.id, context.actor.id, undefined, context.target.id, { before, after: nickname });
+    await recordAuditIfEnabled(this.configs, this.audits, { eventType: "member.nickname", guildId: context.guild.id, actorId: context.actor.id, targetUserId: context.target.id, metadata: { before, after: nickname } });
     await this.publish(context.guild, "nickname", context.actor, context.target.user, { details: [{ name: "Before", value: before, inline: true }, { name: "After", value: nickname ?? "Server default", inline: true }] });
   }
 
@@ -72,7 +81,7 @@ export class ModerationService {
     const bot = context.guild.members.me;
     if (!bot) throw new Error("Bot member information is unavailable.");
     validateTargetHierarchy(context.actor, context.target, bot);
-    if (!await this.cases.reserveAction(context.guild.id, context.actor.id, context.target.id, context.idempotencyKey, action)) {
+    if (!await this.receipts.reserve({ guildId: context.guild.id, actorId: context.actor.id, targetUserId: context.target.id, idempotencyKey: context.idempotencyKey, action })) {
       const duplicate = await this.cases.findEntryByIdempotency(context.guild.id, context.idempotencyKey);
       if (duplicate) return { action, ...duplicate };
       throw new Error("This interaction has already been processed.");
@@ -82,27 +91,35 @@ export class ModerationService {
     if (notifications && !context.silent && options.notifyBefore) dmDelivered = await this.notify(context.guild, context.target.user, action, reason, options);
     try { await operation(); }
     catch (error: unknown) {
-      if (await this.configs.feature(context.guild.id, "audit-log")) await this.cases.audit("action.failed", context.guild.id, context.actor.id, undefined, context.target.id, { action, error: toError(error).name }, undefined, undefined, undefined, `failed:${context.idempotencyKey}`);
+      await recordAuditIfEnabled(this.configs, this.audits, { eventType: "action.failed", guildId: context.guild.id, actorId: context.actor.id, targetUserId: context.target.id, metadata: { action, error: toError(error).name }, sourceEventId: `failed:${context.idempotencyKey}` });
       throw error;
     }
     if (notifications && !context.silent && !options.notifyBefore) dmDelivered = await this.notify(context.guild, context.target.user, action, reason, options);
-    return this.finish(context, action, context.target.user, { reason, ...options, ...(dmDelivered === undefined ? {} : { dmDelivered }) });
+    try { return await this.finish(context, action, context.target.user, { reason, ...options, ...(dmDelivered === undefined ? {} : { dmDelivered }) }); }
+    catch (error: unknown) {
+      if (action === "warn") throw error;
+      throw this.persistenceFailure(action, context.guild.id, context.actor.id, context.target.id, error);
+    }
   }
 
   private async finish(context: Omit<ActionContext, "target" | "reason">, action: ModerationAction, target: User, options: { reason: string; durationMs?: number; expiresAt?: Date; metadata?: Record<string, unknown>; dmDelivered?: boolean }): Promise<ActionOutcome> {
     let record: { case: ModerationUserCase; entry: ModerationCaseEntry } | undefined;
     if (!context.silent && await this.configs.feature(context.guild.id, "cases")) record = await this.cases.append({ guildId: context.guild.id, targetUserId: target.id, actorId: context.actor.id, action, reason: options.reason, idempotencyKey: context.idempotencyKey, metadata: { ...(options.metadata ?? {}), ...(options.expiresAt ? { expiresAt: options.expiresAt.toISOString() } : {}) }, ...(options.durationMs ? { durationMs: options.durationMs } : {}), ...(context.customType ? { customType: context.customType } : {}) });
-    if (await this.configs.feature(context.guild.id, "audit-log")) await this.cases.audit("action.completed", context.guild.id, context.actor.id, record?.case.id, target.id, { action, silent: Boolean(context.silent), dmDelivered: options.dmDelivered, ...options.metadata }, record?.entry.id, undefined, undefined, `completed:${context.idempotencyKey}`);
+    await recordAuditIfEnabled(this.configs, this.audits, { eventType: "action.completed", guildId: context.guild.id, actorId: context.actor.id, ...(record ? { caseId: record.case.id, caseEntryId: record.entry.id } : {}), targetUserId: target.id, metadata: { action, silent: Boolean(context.silent), dmDelivered: options.dmDelivered, ...options.metadata }, sourceEventId: `completed:${context.idempotencyKey}` });
     await this.publish(context.guild, action, context.actor, target, { reason: options.reason, ...(options.durationMs ? { durationMs: options.durationMs } : {}), ...(record ? { case: record.case, entry: record.entry } : {}) });
     return { action, ...(record ?? {}), ...(options.dmDelivered === undefined ? {} : { dmDelivered: options.dmDelivered }) };
   }
 
   private async notify(guild: Guild, user: User, action: ModerationAction, reason: string, options: { durationMs?: number; expiresAt?: Date }): Promise<boolean> {
-    const config = await this.configs.get(guild.id);
-    return sendActionNotice(user, { action, guild, reason, rulesUrl: config.rulesUrl, ...options });
+    return notifyUserBestEffort(this.configs, this.delivery, user, { action, guild, reason, ...options });
   }
 
-  private async publish(guild: Guild, action: ModerationAction | "nickname", actor: GuildMember, target: User, details: Omit<Parameters<typeof buildActionCard>[0], "action" | "actor" | "target">): Promise<void> {
-    await publishAuditLog(this.configs, guild, { ...details, action, actor, target });
+  private async publish(guild: Guild, action: ModerationAction | "nickname", actor: GuildMember, target: User, details: Omit<PublishedActionInput, "action" | "actor" | "target">): Promise<void> {
+    await publishActionBestEffort(this.configs, this.delivery, guild, { ...details, action, actor, target });
+  }
+
+  private persistenceFailure(action: ModerationAction, guildId: string, actorId: string, targetUserId: string, error: unknown): Error {
+    logger.error("Discord moderation action succeeded but persistence failed", { action, guildId, actorId, targetUserId, error: toError(error).message });
+    return new Error(`The ${action} succeeded in Discord, but its case record could not be saved. Do not repeat the action; review the audit record.`, { cause: error });
   }
 }

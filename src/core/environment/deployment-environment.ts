@@ -19,9 +19,11 @@ export interface DeploymentEnvironmentReport {
 export function inspectDeploymentEnvironment(
   source: EnvironmentSource = process.env,
 ): DeploymentEnvironmentReport {
-  const variables = Object.fromEntries(
-    requiredDeploymentVariables.map((name) => [name, Boolean(source[name]?.trim())]),
-  ) as Record<RequiredDeploymentVariable, boolean>;
+  const variables: Record<RequiredDeploymentVariable, boolean> = {
+    DATABASE_URL: Boolean(source.DATABASE_URL?.trim()),
+    DISCORD_TOKEN: Boolean(source.DISCORD_TOKEN?.trim()),
+    DISCORD_CLIENT_ID: Boolean(source.DISCORD_CLIENT_ID?.trim()),
+  };
 
   return {
     variables,

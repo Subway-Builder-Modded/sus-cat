@@ -3,13 +3,19 @@ import { describe, expect, it } from "vitest";
 
 describe("reset semantics", () => {
   it("keeps case reset module-local and makes resetsetup invoke module hooks transactionally", async () => {
-    const repository = await readFile(new URL("../src/modules/moderation/repositories/case-repository.ts", import.meta.url), "utf8");
-    const setup = await readFile(new URL("../src/core/setup/handler.ts", import.meta.url), "utf8");
-    expect(repository).toContain("resetModerationCases");
-    expect(repository).toContain("guildCaseCounters");
-    expect(repository).not.toContain("guildSettings");
-    expect(setup).toContain("database.db.transaction");
-    expect(setup).toContain("module.resetGuild");
-    expect(setup).toContain("tx.delete(guildSettings)");
+    const [moderationReset, configRepository, configService, setup] = await Promise.all([
+      readFile(new URL("../src/modules/moderation/repositories/reset-repository.ts", import.meta.url), "utf8"),
+      readFile(new URL("../src/core/config/repository.ts", import.meta.url), "utf8"),
+      readFile(new URL("../src/core/config/service.ts", import.meta.url), "utf8"),
+      readFile(new URL("../src/core/setup/handler.ts", import.meta.url), "utf8"),
+    ]);
+    expect(moderationReset).toContain("resetModerationCases");
+    expect(moderationReset).toContain("guildCaseCounters");
+    expect(moderationReset).not.toContain("guildSettings");
+    expect(configRepository).toContain("this.db.transaction");
+    expect(configRepository).toContain("transaction.delete(guildSettings)");
+    expect(configService).toContain("module.resetGuild");
+    expect(setup).toContain("settings.resetGuild");
+    expect(setup).not.toContain("drizzle-orm");
   });
 });

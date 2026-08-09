@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { filterActions } from "../src/modules/moderation/commands/user.js";
+import { filterCaseActions } from "../src/modules/moderation/interactions/user-view-controller.js";
 
 describe("user management filters", () => {
   it("maps every user view to the shared case-entry action filter", () => {
-    expect(filterActions("warns")).toEqual(["warn"]);
-    expect(filterActions("timeouts")).toEqual(["timeout", "untimeout"]);
-    expect(filterActions("kicks")).toEqual(["kick"]);
-    expect(filterActions("bans")).toEqual(["ban", "unban"]);
-    expect(filterActions("case")).toBeUndefined();
+    expect(filterCaseActions("warns")).toEqual(["warn"]);
+    expect(filterCaseActions("timeouts")).toEqual(["timeout", "untimeout"]);
+    expect(filterCaseActions("kicks")).toEqual(["kick"]);
+    expect(filterCaseActions("bans")).toEqual(["ban", "unban"]);
+    expect(filterCaseActions("case")).toBeUndefined();
   });
 });

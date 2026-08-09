@@ -1,10 +1,11 @@
-import type { ClientEvents, PermissionResolvable } from "discord.js";
+import type { PermissionResolvable } from "discord.js";
 
 import type { BotCommand } from "../commands/command.js";
 import type { ConfigDefinition } from "../config/definitions.js";
 import type { BotClient } from "../bot/bot-client.js";
 import type { RoutedComponentInteraction } from "../interactions/types.js";
 import type { DatabaseTransaction } from "../database/client.js";
+import type { BotEvent } from "../events/bot-event.js";
 
 export interface FeatureDefinition {
   readonly id: string;
@@ -43,21 +44,16 @@ export interface ModuleManifest {
   readonly docs: readonly DocumentationPage[];
 }
 
-export interface ModuleEventHandler<Name extends keyof ClientEvents = keyof ClientEvents> {
-  readonly name: Name;
-  readonly once?: boolean;
-  execute(client: BotClient, ...args: ClientEvents[Name]): Promise<void> | void;
-}
-
 export interface BotModule {
   readonly manifest: ModuleManifest;
   readonly commands: readonly BotCommand[];
-  readonly events?: readonly ModuleEventHandler[];
+  readonly events?: readonly BotEvent[];
   authorizeCommand?(client: BotClient, interaction: import("../commands/command.js").BotCommandInteraction, nativePermission: bigint): Promise<boolean>;
   isConfigurationComponent?(action: string): boolean;
+  componentAcknowledgement?(action: string): "defer-update" | "modal";
   featureForComponent?(action: string): string | undefined;
   handleComponent?(client: BotClient, interaction: RoutedComponentInteraction, action: string, parts: readonly string[]): Promise<void>;
-  configurationView?(settings: import("../config/service.js").GuildConfigService, guildId: string, actorId: string): Promise<import("discord.js").InteractionUpdateOptions>;
+  configurationView?(settings: import("../config/service.js").GuildConfigService, guildId: string, actorId: string): Promise<import("../interactions/response.js").SafeReplyOptions>;
   initialize?(client: BotClient): Promise<void> | void;
   shutdown?(): Promise<void> | void;
   resetGuild?(guildId: string, transaction: DatabaseTransaction): Promise<void>;

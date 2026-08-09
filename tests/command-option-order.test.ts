@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createBotClient } from "../src/core/bot/create-client.js";
+import { createApplicationClient } from "../src/create-application-client.js";
 import type { BotClient } from "../src/core/bot/bot-client.js";
 import { loadCommands } from "../src/core/commands/load-commands.js";
 
@@ -19,7 +19,7 @@ describe("application command option ordering", () => {
   let client: BotClient;
 
   beforeAll(async () => {
-    client = createBotClient();
+    client = createApplicationClient();
     await loadCommands(client);
   });
 

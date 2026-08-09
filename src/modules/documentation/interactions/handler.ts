@@ -2,7 +2,7 @@ import { ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from
 
 import type { BotClient } from "../../../core/bot/bot-client.js";
 import { componentId } from "../../../core/interactions/custom-id.js";
-import { respond } from "../../../core/interactions/response.js";
+import { respond, updateComponent } from "../../../core/interactions/response.js";
 import type { RoutedComponentInteraction } from "../../../core/interactions/types.js";
 import { canConfigure } from "../../../core/permissions/configuration.js";
 import { buildDocumentationIndex, searchDocumentation } from "../services/indexer.js";
@@ -24,14 +24,14 @@ export async function handleDocumentationComponent(client: BotClient, interactio
     return;
   }
   if (!interaction.isMessageComponent()) return;
-  if (action === "home") await interaction.update(documentationHome(client.platform.modules, actorId, false, enabledModuleIds));
-  else if (action === "commands") await interaction.update(commandList(client.platform.modules, actorId));
-  else if (action === "modules") await interaction.update(documentList("Enabled Modules", index.filter((page) => page.id === "module" && enabledModuleIds.includes(page.moduleId)), actorId));
+  if (action === "home") await updateComponent(interaction, documentationHome(client.platform.modules, actorId, enabledModuleIds));
+  else if (action === "commands") await updateComponent(interaction, commandList(client.platform.modules, actorId));
+  else if (action === "modules") await updateComponent(interaction, documentList("Enabled Modules", index.filter((page) => page.id === "module" && enabledModuleIds.includes(page.moduleId)), actorId));
   else if (action === "modules_all") {
     if (!interaction.inCachedGuild() || !canConfigure(interaction.member)) throw new Error("Only server administrators can browse disabled modules.");
-    await interaction.update(documentList("All Available Modules", index.filter((page) => page.id === "module"), actorId));
+    await updateComponent(interaction, documentList("All Available Modules", index.filter((page) => page.id === "module"), actorId));
   }
-  else if (action === "category") await interaction.update(documentList(parts[1]?.replaceAll("_", " ") ?? "Documentation", index.filter((page) => page.category === parts[1]?.replaceAll("_", " ")), actorId));
+  else if (action === "category") await updateComponent(interaction, documentList(parts[1]?.replaceAll("_", " ") ?? "Documentation", index.filter((page) => page.category === parts[1]?.replaceAll("_", " ")), actorId));
 }
 
 async function enabledModules(client: BotClient, guildId: string | null): Promise<string[]> {

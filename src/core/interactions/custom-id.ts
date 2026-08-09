@@ -13,3 +13,9 @@ export function parseComponentId(id: string): ComponentRoute | undefined {
   if ((namespace !== "core" && namespace !== "module") || !owner || !action) return undefined;
   return { namespace, owner, action, parts };
 }
+
+export function requireComponentValue(values: readonly string[], index: number): string {
+  const value = values[index];
+  if (!value) throw new Error("This control is incomplete or stale.");
+  return value;
+}

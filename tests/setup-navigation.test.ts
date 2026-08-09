@@ -12,13 +12,13 @@ describe("setup selection and navigation", () => {
     const settings = { isFeatureEnabled: async () => enabled } as never;
     const view = await featureSelectionView(settings, registry, "guild", "sample", "actor");
     const ids = view.components.flatMap((row) => row.components.map((component) => component.toJSON().custom_id)).filter(Boolean);
-    expect(ids.some((id) => parseComponentId(id!)?.action === "continue_features")).toBe(true);
-    expect(ids.some((id) => parseComponentId(id!)?.action === "back_features")).toBe(true);
+    expect(ids.some((id) => typeof id === "string" && parseComponentId(id)?.action === "continue_features")).toBe(true);
+    expect(ids.some((id) => typeof id === "string" && parseComponentId(id)?.action === "back_features")).toBe(true);
   });
   it("keeps module selection and advancement as separate component actions", async () => {
     const settings = { isModuleEnabled: async () => true } as never;
     const view = await moduleSelectionView(settings, registry, "guild", "actor");
-    const actions = view.components.flatMap((row) => row.components.map((component) => parseComponentId(component.toJSON().custom_id!)?.action));
+    const actions = view.components.flatMap((row) => row.components.map((component) => componentAction(component.toJSON().custom_id)));
     expect(actions).toContain("modules");
     expect(actions).toContain("continue_modules");
     expect(actions).toContain("back_admin");
@@ -26,7 +26,7 @@ describe("setup selection and navigation", () => {
   it("lists every available setting and marks required fields", async () => {
     const settings = { getModuleConfig: async () => ({ scope: "moderation", threshold: 25 }), isConfigAvailable: async () => true, isConfigRequired: async (_guild: string, _module: string, key: string) => key === "scope" } as never;
     const view = await setupConfigurationView(settings, registry, "guild", "sample", "actor");
-    const actions = view.components.flatMap((row) => row.components.map((component) => parseComponentId(component.toJSON().custom_id!)?.action));
+    const actions = view.components.flatMap((row) => row.components.map((component) => componentAction(component.toJSON().custom_id)));
     expect(actions).toContain("config_field");
     const options = view.components[0]?.components[0]?.toJSON().options;
     expect(options).toEqual(expect.arrayContaining([expect.objectContaining({ label: "Scope *", value: "scope" }), expect.objectContaining({ label: "Threshold", value: "threshold" })]));
@@ -36,15 +36,19 @@ describe("setup selection and navigation", () => {
   it("provides the type-appropriate editor from the full setup picker", async () => {
     const settings = { getModuleConfig: async () => ({ scope: "moderation", threshold: 25 }), requireConfigAvailable: async () => undefined, isConfigRequired: async () => true } as never;
     const editor = await setupFieldEditor(settings, registry, "guild", "sample", "scope", "actor");
-    expect("view" in editor && parseComponentId(editor.view.components?.[0]?.components?.[0]?.toJSON().custom_id!)?.action).toBe("config_value");
+    expect("view" in editor && componentAction(editor.view.components?.[0]?.components?.[0]?.toJSON().custom_id)).toBe("config_value");
     const modalEditor = await setupFieldEditor(settings, registry, "guild", "sample", "threshold", "actor");
     expect("modal" in modalEditor && parseComponentId(modalEditor.modal.toJSON().custom_id)?.action).toBe("config_modal");
   });
   it("hides setup fields owned by disabled features", async () => {
     const settings = { getModuleConfig: async () => ({ scope: "moderation" }), isConfigAvailable: async () => false, isConfigRequired: async () => false } as never;
     const view = await setupConfigurationView(settings, registry, "guild", "sample", "actor");
-    const actions = view.components.flatMap((row) => row.components.map((component) => parseComponentId(component.toJSON().custom_id!)?.action));
+    const actions = view.components.flatMap((row) => row.components.map((component) => componentAction(component.toJSON().custom_id)));
     expect(actions).not.toContain("config_field");
     expect(actions).toContain("continue_config");
   });
 });
+
+function componentAction(customId: string | undefined): string | undefined {
+  return customId ? parseComponentId(customId)?.action : undefined;
+}

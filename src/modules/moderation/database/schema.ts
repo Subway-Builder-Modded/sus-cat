@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
 
 export const caseEntryAction = pgEnum("moderation_entry_action", [
   "manual", "warn", "timeout", "untimeout", "kick", "ban", "unban", "create_channel",
@@ -124,13 +124,13 @@ export const moderationActionReceipts = pgTable("moderation_action_receipts", {
 ]);
 
 export const moderationLockStates = pgTable("moderation_lock_states", {
-  channelId: varchar("channel_id", { length: 20 }).primaryKey(),
+  channelId: varchar("channel_id", { length: 20 }).notNull(),
   guildId: varchar("guild_id", { length: 20 }).notNull(),
   actorId: varchar("actor_id", { length: 20 }).notNull(),
   previousSendMessages: boolean("previous_send_messages"),
   reason: text("reason"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [primaryKey({ name: "moderation_lock_states_guild_channel_pk", columns: [table.guildId, table.channelId] })]);
 
 export type ModerationUserCase = typeof moderationUserCases.$inferSelect;
 export type ModerationCaseEntry = typeof moderationCaseEntries.$inferSelect;

@@ -1,7 +1,7 @@
 import { access } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
-import { createBotClient } from "../core/bot/create-client.js";
+import { createApplicationClient } from "../create-application-client.js";
 import { loadCommands } from "../core/commands/load-commands.js";
 import { createDatabase } from "../core/database/client.js";
 import { inspectDeploymentEnvironment } from "../core/environment/deployment-environment.js";
@@ -11,7 +11,7 @@ import { toError } from "../core/shared/to-error.js";
 async function doctor(): Promise<void> {
   const report = inspectDeploymentEnvironment();
   logger.info("[doctor] Environment metadata", { missing: report.missing, railwayService: report.railwayService ?? "local", railwayEnvironment: report.railwayEnvironment ?? "local", secretsPrinted: false });
-  const client = createBotClient();
+  const client = createApplicationClient();
   await loadCommands(client);
   await access(fileURLToPath(new URL("../../drizzle/meta/_journal.json", import.meta.url)));
   logger.info("[doctor] Registry and migrations valid", { modules: client.modules.all().length, commands: client.commands.size });

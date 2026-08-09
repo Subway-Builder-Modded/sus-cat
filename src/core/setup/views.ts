@@ -1,6 +1,7 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelSelectMenuBuilder, ChannelType, EmbedBuilder, ModalBuilder, RoleSelectMenuBuilder, StringSelectMenuBuilder, TextInputBuilder, TextInputStyle, type InteractionUpdateOptions } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelSelectMenuBuilder, ChannelType, EmbedBuilder, ModalBuilder, RoleSelectMenuBuilder, StringSelectMenuBuilder, TextInputBuilder, TextInputStyle } from "discord.js";
 
 import type { GuildConfigService } from "../config/service.js";
+import type { SafeReplyOptions } from "../interactions/response.js";
 import type { ConfigType, ConfigValue } from "../config/definitions.js";
 import { componentId } from "../interactions/custom-id.js";
 import type { ModuleRegistry } from "../modules/registry.js";
@@ -63,7 +64,7 @@ export async function setupConfigurationView(settings: GuildConfigService, regis
   return { embeds: [new EmbedBuilder().setColor(ui.colors.primary).setTitle(`${module.manifest.icon} ${module.manifest.name} Configuration`).setDescription(`${fields || "No settings are available for the enabled features."}${required.size ? "\n\n`*` Required" : ""}`)], components };
 }
 
-export async function setupFieldEditor(settings: GuildConfigService, registry: ModuleRegistry, guildId: string, moduleId: string, key: string, actorId: string): Promise<{ view: InteractionUpdateOptions } | { modal: ModalBuilder }> {
+export async function setupFieldEditor(settings: GuildConfigService, registry: ModuleRegistry, guildId: string, moduleId: string, key: string, actorId: string): Promise<{ view: SafeReplyOptions } | { modal: ModalBuilder }> {
   await settings.requireConfigAvailable(guildId, moduleId, key);
   const definition = registry.require(moduleId).manifest.config.find((item) => item.key === key);
   if (!definition) throw new Error("That setup field no longer exists.");

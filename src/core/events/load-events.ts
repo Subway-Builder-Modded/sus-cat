@@ -7,13 +7,12 @@ import type { BotEvent } from "./bot-event.js";
 const eventDirectory = new URL("./handlers/", import.meta.url);
 
 export async function loadEvents(client: BotClient): Promise<void> {
-  const events: BotEvent[] = [...await loadDefaultExports<BotEvent>(eventDirectory), ...client.modules.all().flatMap((module) => module.events ?? []) as unknown as BotEvent[]];
+  const loaded = await loadDefaultExports(eventDirectory);
+  const invalid = loaded.find((event) => !isBotEvent(event));
+  if (invalid) throw new TypeError("An event module has an invalid default export");
+  const events: BotEvent[] = [...loaded.filter(isBotEvent), ...client.modules.all().flatMap((module) => module.events ?? [])];
 
   for (const event of events) {
-    if (!event.name || typeof event.execute !== "function") {
-      throw new TypeError("An event module has an invalid default export");
-    }
-
     const listener = (...args: unknown[]): void => {
       Promise.resolve(event.execute(client, ...args)).catch((error: unknown) => {
         logger.error(`Event handler failed: ${event.name}`, toError(error));
@@ -28,4 +27,8 @@ export async function loadEvents(client: BotClient): Promise<void> {
   }
 
   logger.info(`Loaded ${events.length} event handler(s)`);
+}
+
+function isBotEvent(value: unknown): value is BotEvent {
+  return typeof value === "object" && value !== null && "name" in value && typeof value.name === "string" && "execute" in value && typeof value.execute === "function";
 }

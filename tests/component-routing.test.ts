@@ -11,6 +11,8 @@ describe("module component routing", () => {
     expect(moderationModule.isConfigurationComponent?.("config_home")).toBe(true);
     expect(moderationModule.isConfigurationComponent?.("modal_type_edit")).toBe(true);
     expect(moderationModule.featureForComponent?.("config_home")).toBeUndefined();
+    expect(moderationModule.componentAcknowledgement?.("case_evidence")).toBe("defer-update");
+    expect(moderationModule.componentAcknowledgement?.("case_evidence_add")).toBe("modal");
   });
 
   it("rejects unsafe and oversized IDs", () => {

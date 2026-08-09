@@ -22,4 +22,8 @@ describe("central command gating", () => {
   it("allows setup/core exemptions", async () => {
     await expect(enforceCommandGate(client("unconfigured", false, false), interaction, command({ moduleId: undefined, featureId: undefined, setupRequired: false }))).resolves.toBeUndefined();
   });
+  it("fails closed when required bot permissions are unavailable", async () => {
+    const unavailable = { guildId: "guild", appPermissions: null } as never;
+    await expect(enforceCommandGate(client("configured", true, true), unavailable, command({ featureId: "purge" }))).rejects.toThrow("missing Discord permissions");
+  });
 });

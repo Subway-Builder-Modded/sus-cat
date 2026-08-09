@@ -2253,7 +2253,7 @@ Before code is considered ready, run:
 pnpm check
 pnpm test
 pnpm build
-pnpm doctor
+pnpm run doctor
 ```
 
 All applicable checks should pass.

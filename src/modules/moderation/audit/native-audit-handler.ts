@@ -1,25 +1,27 @@
 import { AuditLogEvent, EmbedBuilder, Events, type GuildAuditLogsEntry } from "discord.js";
 
-import type { ModuleEventHandler } from "../../../core/modules/types.js";
+import { defineEvent } from "../../../core/events/bot-event.js";
 import { logger } from "../../../core/shared/logger.js";
 import { toError } from "../../../core/shared/to-error.js";
+import { requireModerationModule } from "../moderation-module.js";
 
 const moderationEvents = new Set<AuditLogEvent>([
   AuditLogEvent.MemberBanAdd, AuditLogEvent.MemberBanRemove, AuditLogEvent.MemberKick, AuditLogEvent.MemberUpdate,
   AuditLogEvent.MemberRoleUpdate, AuditLogEvent.MessageDelete, AuditLogEvent.MessageBulkDelete,
 ]);
 
-export default {
+export default defineEvent({
   name: Events.GuildAuditLogEntryCreate,
   async execute(client, entry, guild) {
     try {
       if (await client.platform.settings.setupStatus(guild.id) !== "configured" || !await client.platform.settings.isFeatureEnabled(guild.id, "moderation", "audit-log")) return;
       if (entry.executorId === client.user?.id) return; // Bot-originated actions are published directly with richer context.
-      const config = await client.moderation!.configs.get(guild.id);
+      const moderation = requireModerationModule(client);
+      const config = await moderation.configs.get(guild.id);
       if (!shouldIncludeAuditEvent(config.auditScope, entry.action)) return;
       const changes = Object.fromEntries((entry.changes ?? []).map((change) => [change.key, { old: change.old ?? null, new: change.new ?? null }]));
       const targetUserId = typeof entry.targetId === "string" ? entry.targetId : undefined;
-      const created = await client.moderation!.cases.recordNativeAudit({ guildId: guild.id, actorId: entry.executorId ?? client.user?.id ?? "system", ...(targetUserId ? { targetUserId } : {}), sourceEventId: entry.id, eventType: `discord.${AuditLogEvent[entry.action] ?? entry.action}`, metadata: { action: entry.action, reason: entry.reason, extra: printableExtra(entry) }, after: changes });
+      const created = await moderation.audits.recordNative({ guildId: guild.id, actorId: entry.executorId ?? client.user?.id ?? "system", ...(targetUserId ? { targetUserId } : {}), sourceEventId: entry.id, eventType: `discord.${AuditLogEvent[entry.action] ?? entry.action}`, metadata: { action: entry.action, reason: entry.reason, extra: printableExtra(entry) }, after: changes });
       if (!created || !config.auditLogChannelId) return;
       const channel = await guild.channels.fetch(config.auditLogChannelId).catch(() => undefined); if (!channel?.isSendable()) return;
       const actionName = (AuditLogEvent[entry.action] ?? `Event ${entry.action}`).replace(/([a-z])([A-Z])/g, "$1 $2");
@@ -33,7 +35,7 @@ export default {
       await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
     } catch (error: unknown) { logger.warn("Native audit event could not be processed", { guildId: guild.id, entryId: entry.id, error: toError(error).message }); }
   },
-} satisfies ModuleEventHandler<typeof Events.GuildAuditLogEntryCreate>;
+});
 
 export function shouldIncludeAuditEvent(scope: "moderation" | "full", action: AuditLogEvent): boolean { return scope === "full" || moderationEvents.has(action); }
 

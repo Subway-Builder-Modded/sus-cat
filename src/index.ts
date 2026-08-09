@@ -1,4 +1,4 @@
-import { createBotClient } from "./core/bot/create-client.js";
+import { createApplicationClient } from "./create-application-client.js";
 import { startBot } from "./core/bot/start-bot.js";
 import { loadEnvironment } from "./core/environment/environment.js";
 import { HealthServer } from "./core/health/health-server.js";
@@ -7,7 +7,7 @@ import { toError } from "./core/shared/to-error.js";
 
 async function main(): Promise<void> {
   const environment = loadEnvironment({ requireDatabase: true });
-  const client = createBotClient(environment.databaseUrl);
+  const client = createApplicationClient(environment.databaseUrl);
   const health = new HealthServer(client, environment.port);
   let shuttingDown = false;
 
@@ -17,7 +17,7 @@ async function main(): Promise<void> {
     logger.info("Shutting down bot", { reason, exitCode });
     await health.close().catch((error: unknown) => logger.warn("Health server shutdown failed", toError(error)));
     client.destroy();
-    client.moderation?.close();
+    await client.closeModuleServices();
     await client.runtime?.database.close().catch((error: unknown) => logger.warn("Database shutdown failed", toError(error)));
     process.exitCode = exitCode;
   };

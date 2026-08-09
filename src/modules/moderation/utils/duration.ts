@@ -17,13 +17,18 @@ export function parseDuration(input: string, maximum = Number.MAX_SAFE_INTEGER):
 
   const duration = matches.reduce((total, match) => {
     const amount = Number(match[1]);
-    const unit = match[2] as keyof typeof units;
+    const unit = match[2];
+    if (!isDurationUnit(unit)) throw new Error("The duration contains an unsupported unit.");
     return total + amount * units[unit];
   }, 0);
 
   if (!Number.isSafeInteger(duration) || duration < 1_000) throw new Error("Duration must be at least 1 second.");
   if (duration > maximum) throw new Error(`Duration cannot exceed ${formatDuration(maximum)}.`);
   return duration;
+}
+
+function isDurationUnit(value: string | undefined): value is keyof typeof units {
+  return value !== undefined && Object.hasOwn(units, value);
 }
 
 export function formatDuration(milliseconds: number): string {

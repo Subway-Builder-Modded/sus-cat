@@ -18,7 +18,7 @@ describe("sudo command", () => {
 
   it("is independently toggleable and declares the bot permissions it needs", () => {
     const feature = moderationManifest.features.find((item) => item.id === "sudo");
-    expect(feature?.defaultEnabled).toBe(true);
+    expect(feature?.defaultEnabled).toBe(false);
     expect(feature?.requiredBotPermissions).toEqual([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages]);
   });
 });

@@ -1,11 +1,6 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
-import * as coreSchema from "./schema.js";
-import * as moderationSchema from "../../modules/moderation/database/schema.js";
-
-const schema = { ...coreSchema, ...moderationSchema };
-
 export function createDatabase(databaseUrl: string) {
   const connection = postgres(databaseUrl, {
     max: 10,
@@ -15,7 +10,7 @@ export function createDatabase(databaseUrl: string) {
     max_lifetime: 60 * 30,
   });
   return {
-    db: drizzle(connection, { schema }),
+    db: drizzle(connection),
     ping: async () => {
       await connection`select 1`;
     },

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import type { Database } from "../../../core/database/client.js";
 import { moderationLockStates } from "../database/schema.js";
@@ -6,15 +6,19 @@ import { moderationLockStates } from "../database/schema.js";
 export class LockRepository {
   constructor(private readonly db: Database) {}
 
-  get(channelId: string) {
-    return this.db.query.moderationLockStates.findFirst({ where: eq(moderationLockStates.channelId, channelId) });
+  async create(input: typeof moderationLockStates.$inferInsert): Promise<boolean> {
+    const [created] = await this.db.insert(moderationLockStates).values(input)
+      .onConflictDoNothing({ target: [moderationLockStates.guildId, moderationLockStates.channelId] })
+      .returning({ channelId: moderationLockStates.channelId });
+    return Boolean(created);
   }
 
-  async save(input: typeof moderationLockStates.$inferInsert): Promise<void> {
-    await this.db.insert(moderationLockStates).values(input);
+  async take(guildId: string, channelId: string) {
+    const [state] = await this.db.delete(moderationLockStates).where(and(eq(moderationLockStates.guildId, guildId), eq(moderationLockStates.channelId, channelId))).returning();
+    return state;
   }
 
-  async remove(channelId: string): Promise<void> {
-    await this.db.delete(moderationLockStates).where(eq(moderationLockStates.channelId, channelId));
+  async restore(input: typeof moderationLockStates.$inferInsert): Promise<void> {
+    await this.db.insert(moderationLockStates).values(input).onConflictDoNothing({ target: [moderationLockStates.guildId, moderationLockStates.channelId] });
   }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { respond } from "../src/core/interactions/response.js";
+import { respond, updateComponent } from "../src/core/interactions/response.js";
 
 function interaction(state: { deferred: boolean; replied: boolean }) {
   return { ...state, reply: vi.fn(), editReply: vi.fn(), followUp: vi.fn() };
@@ -24,5 +24,12 @@ describe("interaction response semantics", () => {
     const target = interaction({ deferred: false, replied: true });
     await respond(target as never, { content: "another" });
     expect(target.followUp).toHaveBeenCalledOnce();
+  });
+
+  it("edits a component response after the router has deferred its update", async () => {
+    const target = { deferred: true, editReply: vi.fn(), update: vi.fn() };
+    await updateComponent(target as never, { content: "updated" });
+    expect(target.editReply).toHaveBeenCalledOnce();
+    expect(target.update).not.toHaveBeenCalled();
   });
 });

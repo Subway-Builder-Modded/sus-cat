@@ -29,6 +29,20 @@
       "when": 1786226400000,
       "tag": "0003_unified_audit_log",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786230000000,
+      "tag": "0004_guild_scoped_lock_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1786233600000,
+      "tag": "0005_safe_feature_defaults",
+      "breakpoints": true
     }
   ]
 }

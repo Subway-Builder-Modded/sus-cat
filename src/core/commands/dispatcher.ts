@@ -1,7 +1,5 @@
-import { MessageFlags } from "discord.js";
-
 import type { BotClient } from "../bot/bot-client.js";
-import { respond } from "../interactions/response.js";
+import { deferEphemeral, respond } from "../interactions/response.js";
 import { errorEmbed, warningEmbed } from "../ui/embeds.js";
 import { logger } from "../shared/logger.js";
 import { toError } from "../shared/to-error.js";
@@ -31,7 +29,7 @@ export async function dispatchCommand(client: BotClient, interaction: BotCommand
 }
 
 async function acknowledge(interaction: BotCommandInteraction, command: BotCommand): Promise<void> {
-  if (command.requirements.acknowledgement === "defer-ephemeral") await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (command.requirements.acknowledgement === "defer-ephemeral") await deferEphemeral(interaction);
   else if (command.requirements.acknowledgement === "defer-public") await interaction.deferReply();
 }
 
@@ -56,7 +54,7 @@ export async function enforceCommandGate(client: BotClient, interaction: BotComm
     const feature = client.modules.require(requirements.moduleId).manifest.features.find((item) => item.id === requirements.featureId);
     throw new Error(`${feature?.name ?? requirements.featureId} is disabled in this server.`);
   }
-  if (requirements.featureId && interaction.appPermissions) {
+  if (requirements.featureId) {
     const feature = client.modules.require(requirements.moduleId).manifest.features.find((item) => item.id === requirements.featureId);
     const missing = (feature?.requiredBotPermissions ?? []).filter((permission) => !interaction.appPermissions?.has(permission));
     if (missing.length) throw new Error(`I am missing Discord permissions required by ${feature?.name ?? requirements.featureId}.`);

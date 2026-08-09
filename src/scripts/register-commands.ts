@@ -1,6 +1,6 @@
 import { REST, Routes } from "discord.js";
 
-import { createBotClient } from "../core/bot/create-client.js";
+import { createApplicationClient } from "../create-application-client.js";
 import { loadCommands } from "../core/commands/load-commands.js";
 import { loadEnvironment, requiredVariable } from "../core/environment/environment.js";
 import { logger } from "../core/shared/logger.js";
@@ -10,7 +10,7 @@ async function registerCommands(): Promise<void> {
   logger.info("[discord] Registering production commands");
   const environment = loadEnvironment();
   const clientId = environment.discordClientId ?? requiredVariable("DISCORD_CLIENT_ID");
-  const client = createBotClient();
+  const client = createApplicationClient();
   await loadCommands(client);
 
   const definitions = client.commands.map((command) => command.data.toJSON());

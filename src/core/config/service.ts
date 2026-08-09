@@ -7,10 +7,11 @@ import type { ModuleRegistry } from "../modules/registry.js";
 export interface ConfigurationIssue { readonly moduleId: string; readonly key: string; readonly message: string; }
 
 export class GuildConfigService {
-  constructor(readonly repository: GuildConfigRepository, readonly modules: ModuleRegistry) {}
+  constructor(private readonly repository: GuildConfigRepository, private readonly modules: ModuleRegistry) {}
 
   async ensureGuild(guildId: string): Promise<void> { await this.repository.ensureGuild(guildId); }
   async registerGuildJoin(guildId: string, actorId: string): Promise<void> { await this.repository.setSetup(guildId, "unconfigured", actorId); }
+  async markGuildInactive(guildId: string): Promise<void> { await this.repository.markInactive(guildId); }
   async isGuildActive(guildId: string): Promise<boolean> { return (await this.repository.setup(guildId))?.active ?? false; }
   async setupStatus(guildId: string): Promise<"unconfigured" | "configuring" | "configured"> {
     return (await this.repository.setup(guildId))?.setupStatus ?? "unconfigured";
@@ -23,9 +24,7 @@ export class GuildConfigService {
     return Boolean((await this.repository.setup(guildId))?.setupCompletedAt);
   }
   async setBotAdminRoles(guildId: string, roleIds: readonly string[], actorId: string): Promise<void> {
-    const before = await this.botAdminRoleIds(guildId);
-    await this.repository.setBotAdminRoles(guildId, roleIds);
-    await this.repository.audit(guildId, actorId, "core", "botAdminRoleIds", before, roleIds);
+    await this.repository.setBotAdminRoles(guildId, roleIds, actorId);
   }
   async beginSetup(guildId: string, actorId: string): Promise<void> { await this.repository.setSetup(guildId, "configuring", actorId); }
   async completeSetup(guildId: string, actorId: string): Promise<void> {
@@ -35,9 +34,14 @@ export class GuildConfigService {
   }
   async resetModule(guildId: string, moduleId: string, actorId: string): Promise<void> {
     this.modules.require(moduleId);
-    await this.repository.clearModule(guildId, moduleId);
-    await this.repository.audit(guildId, actorId, moduleId, "module.reset", "custom", "defaults");
+    await this.repository.clearModule(guildId, moduleId, { actorId, key: "module.reset", before: "custom", after: "defaults" });
   }
+  async resetGuild(guildId: string): Promise<void> {
+    await this.repository.resetGuild(guildId, async (transaction) => {
+      for (const module of this.modules.all()) await module.resetGuild?.(guildId, transaction);
+    });
+  }
+  async recentAudit(guildId: string) { return this.repository.recentAudit(guildId); }
   async isModuleEnabled(guildId: string, moduleId: string): Promise<boolean> {
     const module = this.modules.require(moduleId);
     const enabled = (await this.repository.module(guildId, moduleId))?.enabled ?? module.manifest.defaultEnabled;
@@ -48,26 +52,68 @@ export class GuildConfigService {
   async setModuleEnabled(guildId: string, moduleId: string, enabled: boolean, actorId: string): Promise<void> {
     const module = this.modules.require(moduleId);
     if (enabled) for (const dependency of module.manifest.dependencies ?? []) if (!await this.isModuleEnabled(guildId, dependency)) throw new Error(`${module.manifest.name} requires ${this.modules.require(dependency).manifest.name}.`);
-    const row = await this.repository.module(guildId, moduleId);
-    const before = row?.enabled ?? module.manifest.defaultEnabled;
-    await this.repository.saveModule(guildId, moduleId, enabled, row?.config ?? defaultConfig(module.manifest.config));
-    await this.repository.audit(guildId, actorId, moduleId, "module.enabled", before, enabled);
+    await this.repository.saveModule(guildId, moduleId, enabled, defaultConfig(module.manifest.config), actorId, module.manifest.defaultEnabled);
+  }
+  async setEnabledModules(guildId: string, selectedModuleIds: readonly string[], actorId: string): Promise<void> {
+    const selected = new Set(selectedModuleIds);
+    const unknown = selectedModuleIds.find((moduleId) => !this.modules.all().some((module) => module.manifest.id === moduleId));
+    if (unknown) throw new Error(`Unknown module: ${unknown}`);
+    for (const module of this.modules.all()) {
+      if (!selected.has(module.manifest.id)) continue;
+      const missing = module.manifest.dependencies?.find((dependency) => !selected.has(dependency));
+      if (missing) throw new Error(`${module.manifest.name} requires ${this.modules.require(missing).manifest.name}.`);
+    }
+    const changes = this.modules.all().map((module) => {
+      return { moduleId: module.manifest.id, enabled: selected.has(module.manifest.id), fallbackBefore: module.manifest.defaultEnabled, defaultConfig: defaultConfig(module.manifest.config) };
+    });
+    await this.repository.saveModuleSelection(guildId, changes, actorId);
   }
   async isFeatureEnabled(guildId: string, moduleId: string, featureId: string): Promise<boolean> {
     if (!await this.isModuleEnabled(guildId, moduleId)) return false;
     const feature = this.feature(moduleId, featureId);
-    return (await this.repository.feature(guildId, moduleId, featureId))?.enabled ?? feature.defaultEnabled;
+    const isEnabled = (await this.repository.feature(guildId, moduleId, featureId))?.enabled ?? feature.defaultEnabled;
+    if (!isEnabled) return false;
+    for (const dependency of feature.dependencies ?? []) if (!await this.isFeatureEnabled(guildId, moduleId, dependency)) return false;
+    return true;
   }
   async setFeatureEnabled(guildId: string, moduleId: string, featureId: string, enabled: boolean, actorId: string): Promise<void> {
     const feature = this.feature(moduleId, featureId);
-    if (enabled) for (const dependency of feature.dependencies ?? []) if (!await this.isFeatureEnabled(guildId, moduleId, dependency)) throw new Error(`${feature.name} requires ${this.feature(moduleId, dependency).name}.`);
-    if (!enabled) {
-      const dependents = this.modules.require(moduleId).manifest.features.filter((candidate) => candidate.dependencies?.includes(featureId) && candidate.id !== featureId);
-      for (const dependent of dependents) if (await this.isFeatureEnabled(guildId, moduleId, dependent.id)) await this.setFeatureEnabled(guildId, moduleId, dependent.id, false, actorId);
+    const manifest = this.modules.require(moduleId).manifest;
+    const selected = new Set<string>();
+    for (const candidate of manifest.features) if (await this.isFeatureEnabled(guildId, moduleId, candidate.id)) selected.add(candidate.id);
+    if (enabled) {
+      for (const dependency of feature.dependencies ?? []) if (!selected.has(dependency)) throw new Error(`${feature.name} requires ${this.feature(moduleId, dependency).name}.`);
+      selected.add(featureId);
+    } else {
+      selected.delete(featureId);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const candidate of manifest.features) if (selected.has(candidate.id) && candidate.dependencies?.some((dependency) => !selected.has(dependency))) {
+          selected.delete(candidate.id);
+          changed = true;
+        }
+      }
     }
-    const before = await this.isFeatureEnabled(guildId, moduleId, featureId);
-    await this.repository.saveFeature(guildId, moduleId, featureId, enabled);
-    await this.repository.audit(guildId, actorId, moduleId, "feature.enabled", before, enabled, featureId);
+    await this.setEnabledFeatures(guildId, moduleId, [...selected], actorId);
+  }
+  async setEnabledFeatures(guildId: string, moduleId: string, selectedFeatureIds: readonly string[], actorId: string): Promise<void> {
+    if (!await this.isModuleEnabled(guildId, moduleId)) throw new Error("Enable the module before changing its features.");
+    const module = this.modules.require(moduleId);
+    const selected = new Set(selectedFeatureIds);
+    const unknown = selectedFeatureIds.find((featureId) => !module.manifest.features.some((feature) => feature.id === featureId));
+    if (unknown) throw new Error(`Unknown feature: ${moduleId}.${unknown}`);
+    for (const feature of module.manifest.features) {
+      if (!selected.has(feature.id)) continue;
+      const missing = feature.dependencies?.find((dependency) => !selected.has(dependency));
+      if (missing) throw new Error(`${feature.name} requires ${module.manifest.features.find((item) => item.id === missing)?.name ?? missing}.`);
+    }
+    const changes = module.manifest.features.map((feature) => ({
+      featureId: feature.id,
+      enabled: selected.has(feature.id),
+      fallbackBefore: feature.defaultEnabled,
+    }));
+    await this.repository.saveFeatureSelection(guildId, moduleId, changes, actorId);
   }
   async getModuleConfig(guildId: string, moduleId: string): Promise<Record<string, ConfigValue>> {
     const manifest = this.modules.require(moduleId).manifest;
@@ -83,11 +129,13 @@ export class GuildConfigService {
     if (!await this.isConfigAvailable(guildId, moduleId, key)) throw new Error("Enable the module and its related feature before configuring this setting.");
     const validated = validateConfigValue(definition, value);
     const row = await this.repository.module(guildId, moduleId);
-    const config = await this.getModuleConfig(guildId, moduleId);
-    const before = config[key] ?? null;
-    config[key] = validated;
-    await this.repository.saveModule(guildId, moduleId, row?.enabled ?? module.manifest.defaultEnabled, config);
-    await this.repository.audit(guildId, actorId, moduleId, key, definition.sensitive ? "[REDACTED]" : before, definition.sensitive ? "[REDACTED]" : validated);
+    await this.repository.saveConfigValue(guildId, moduleId, row?.enabled ?? module.manifest.defaultEnabled, defaultConfig(module.manifest.config), {
+      actorId,
+      key,
+      value: validated,
+      fallbackBefore: definition.defaultValue,
+      isSensitive: Boolean(definition.sensitive),
+    });
   }
   async isConfigAvailable(guildId: string, moduleId: string, key: string): Promise<boolean> {
     if (!await this.isModuleEnabled(guildId, moduleId)) return false;

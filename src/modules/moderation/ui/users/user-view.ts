@@ -6,7 +6,13 @@ import { componentId } from "../../utils/custom-id.js";
 import { actionPresentation } from "../actions/presentation.js";
 
 export function userDashboard(input: { user: User; member?: GuildMember; case?: ModerationUserCase; summary: HistorySummary; recent: ModerationCaseEntry[]; actorId: string }) {
-  const roles = input.member ? input.member.roles.cache.filter((role) => role.id !== input.member!.guild.roles.everyone.id).sort((a, b) => b.position - a.position).first(10).join(", ") || "None" : "Not currently in server";
+  const roles = input.member
+    ? input.member.roles.cache
+      .filter((role) => role.id !== input.member?.guild.roles.everyone.id)
+      .sort((left, right) => right.position - left.position)
+      .first(10)
+      .join(", ") || "None"
+    : "Not currently in server";
   const embed = new EmbedBuilder().setColor(0x5865f2).setTitle(`👤 ${input.member?.displayName ?? input.user.username}`).setThumbnail(input.user.displayAvatarURL()).addFields(
     { name: "Account", value: `Created: <t:${Math.floor(input.user.createdTimestamp / 1000)}:F>\nJoined: ${input.member?.joinedTimestamp ? `<t:${Math.floor(input.member.joinedTimestamp / 1000)}:F>` : "Not currently in server"}\nID: \`${input.user.id}\`` },
     { name: "Current", value: `Nickname: ${input.member?.nickname ?? "None"}\nTimeout: ${input.member?.communicationDisabledUntilTimestamp ? `<t:${Math.floor(input.member.communicationDisabledUntilTimestamp / 1000)}:R>` : "No"}\nRoles: ${roles}` },
@@ -20,5 +26,5 @@ export function userDashboard(input: { user: User; member?: GuildMember; case?: 
     new ButtonBuilder().setCustomId(componentId("user_filter", input.actorId, input.user.id, "kick", "1")).setLabel("Kicks").setStyle(ButtonStyle.Secondary).setDisabled(!input.case),
     new ButtonBuilder().setCustomId(componentId("user_filter", input.actorId, input.user.id, "ban", "1")).setLabel("Bans").setStyle(ButtonStyle.Secondary).setDisabled(!input.case),
   );
-  return { embeds: [embed], components: [row], allowedMentions: { parse: [] as never[] } };
+  return { embeds: [embed], components: [row], allowedMentions: { parse: [] } };
 }

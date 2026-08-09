@@ -5,7 +5,7 @@ import type { ModuleRegistry } from "../../../core/modules/registry.js";
 import { ui } from "../../../core/ui/theme.js";
 import type { IndexedDocument } from "../services/indexer.js";
 
-export function documentationHome(registry: ModuleRegistry, actorId: string, minimal = false, enabledModuleIds?: readonly string[]) {
+export function documentationHome(registry: ModuleRegistry, actorId: string, enabledModuleIds?: readonly string[]) {
   const visible = enabledModuleIds ? registry.manifests().filter((module) => enabledModuleIds.includes(module.id)) : registry.manifests();
   const modules = visible.map((module) => `${module.icon} **${module.name}** — ${module.description}`).join("\n");
   const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -15,7 +15,7 @@ export function documentationHome(registry: ModuleRegistry, actorId: string, min
     new ButtonBuilder().setCustomId(componentId("module", "documentation", "search", actorId)).setLabel("Search").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(componentId("module", "documentation", "modules_all", actorId)).setLabel("Available").setStyle(ButtonStyle.Secondary),
   );
-  return { embeds: [new EmbedBuilder().setColor(ui.colors.primary).setTitle("📚 Bot Documentation").setDescription(minimal ? "This server still needs setup. An administrator can run `/setup`. Documentation remains available to help you get started." : `Browse setup, commands, configuration, permissions, and troubleshooting.\n\n${modules}`)], components: [buttons] };
+  return { embeds: [new EmbedBuilder().setColor(ui.colors.primary).setTitle("📚 Bot Documentation").setDescription(`Browse setup, commands, configuration, permissions, and troubleshooting.\n\n${modules}`)], components: [buttons] };
 }
 
 export function documentList(title: string, documents: readonly IndexedDocument[], actorId: string) {

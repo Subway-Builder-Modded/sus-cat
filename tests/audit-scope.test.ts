@@ -23,9 +23,8 @@ describe("audit scopes", () => {
   });
   it("publishes bot actions to the unified channel", async () => {
     const send = vi.fn(async () => undefined), fetch = vi.fn(async () => ({ isSendable: () => true, send }));
-    const configs = { feature: vi.fn(async () => true), get: vi.fn(async () => ({ auditLogChannelId: "log-channel", auditScope: "moderation" })) };
     const guild = { id: "guild", channels: { fetch } }, actor = { id: "actor", toString: () => "<@actor>" };
-    await publishAuditLog(configs as never, guild as never, { action: "purge", actor: actor as never, result: "3 messages" });
+    await publishAuditLog(guild as never, "log-channel", { action: "purge", actor: actor as never, result: "3 messages" });
     expect(fetch).toHaveBeenCalledWith("log-channel");
     expect(send).toHaveBeenCalledOnce();
   });

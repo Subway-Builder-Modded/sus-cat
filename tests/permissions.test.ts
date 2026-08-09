@@ -6,7 +6,11 @@ import { hasModerationAccess } from "../src/modules/moderation/permissions/autho
 function fixture(options: { permissions?: bigint[]; roles?: string[]; owner?: boolean; botAdmins?: string[]; moderators?: string[] }) {
   const permissions = options.permissions ?? [], roles = options.roles ?? [];
   const member = { id: options.owner ? "owner" : "member", guild: { id: "guild", ownerId: "owner" }, permissions: { has: (permission: bigint) => permissions.includes(permission) }, roles: { cache: { some: (predicate: (role: { id: string }) => boolean) => roles.some((id) => predicate({ id })) } } };
-  const client = { platform: { settings: { hasCompletedSetup: async () => true, botAdminRoleIds: async () => options.botAdmins ?? [] } }, moderation: { configs: { get: async () => ({ moderatorRoleIds: options.moderators ?? [] }) } } };
+  const moderationService = { configs: { get: async () => ({ moderatorRoleIds: options.moderators ?? [] }) } };
+  const client = {
+    platform: { settings: { hasCompletedSetup: async () => true, botAdminRoleIds: async () => options.botAdmins ?? [] } },
+    requireModuleService: () => moderationService,
+  };
   return { client: client as never, member: member as never };
 }
 

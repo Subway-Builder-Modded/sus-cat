@@ -14,12 +14,23 @@ class MemoryStore {
   async setSetup(guildId: string, status: "unconfigured" | "configuring" | "configured") { this.setups.set(guildId, status); }
   async module(guildId: string, moduleId: string) { return this.modules.get(`${guildId}:${moduleId}`); }
   async feature(guildId: string, moduleId: string, featureId: string) { return this.features.get(`${guildId}:${moduleId}:${featureId}`); }
-  async saveModule(guildId: string, moduleId: string, enabled: boolean, config: Record<string, unknown>) { this.modules.set(`${guildId}:${moduleId}`, { enabled, config }); }
-  async saveFeature(guildId: string, moduleId: string, featureId: string, enabled: boolean, config = {}) { this.features.set(`${guildId}:${moduleId}:${featureId}`, { enabled, config }); }
-  async audit(guildId: string, _actorId: string, _moduleId: string, key: string) { this.audits.push({ guildId, key }); }
-  async clearModule(guildId: string, moduleId: string) {
+  async saveModule(guildId: string, moduleId: string, enabled: boolean, config: Record<string, unknown>, _actorId?: string, _fallbackBefore?: boolean) { this.modules.set(`${guildId}:${moduleId}`, { enabled, config }); this.audits.push({ guildId, key: "module.enabled" }); }
+  async saveModuleSelection(guildId: string, changes: readonly { moduleId: string; enabled: boolean; defaultConfig: Record<string, unknown> }[], actorId: string) {
+    for (const change of changes) await this.saveModule(guildId, change.moduleId, change.enabled, change.defaultConfig, actorId, false);
+  }
+  async saveConfigValue(guildId: string, moduleId: string, enabled: boolean, defaults: Record<string, unknown>, change: { key: string; value: unknown }) {
+    const current = this.modules.get(`${guildId}:${moduleId}`);
+    this.modules.set(`${guildId}:${moduleId}`, { enabled, config: { ...defaults, ...current?.config, [change.key]: change.value } });
+    this.audits.push({ guildId, key: change.key });
+  }
+  async saveFeature(guildId: string, moduleId: string, featureId: string, enabled: boolean, _actorId?: string, _fallbackBefore?: boolean) { this.features.set(`${guildId}:${moduleId}:${featureId}`, { enabled, config: {} }); this.audits.push({ guildId, key: "feature.enabled" }); }
+  async saveFeatureSelection(guildId: string, moduleId: string, changes: readonly { featureId: string; enabled: boolean }[], actorId: string) {
+    for (const change of changes) await this.saveFeature(guildId, moduleId, change.featureId, change.enabled, actorId, false);
+  }
+  async clearModule(guildId: string, moduleId: string, audit: { key: string }) {
     this.modules.delete(`${guildId}:${moduleId}`);
     for (const key of this.features.keys()) if (key.startsWith(`${guildId}:${moduleId}:`)) this.features.delete(key);
+    this.audits.push({ guildId, key: audit.key });
   }
 }
 
@@ -44,7 +55,11 @@ describe("guild configuration service", () => {
     const { service } = fixture();
     await service.setModuleEnabled("guild", "sample", true, "actor");
     await service.setFeatureEnabled("guild", "sample", "base", false, "actor");
+    expect(await service.isFeatureEnabled("guild", "sample", "child")).toBe(false);
     await expect(service.setFeatureEnabled("guild", "sample", "child", true, "actor")).rejects.toThrow("requires Base");
+    await expect(service.setEnabledFeatures("guild", "sample", ["child"], "actor")).rejects.toThrow("requires Base");
+    await service.setEnabledFeatures("guild", "sample", ["base", "child"], "actor");
+    expect(await service.isFeatureEnabled("guild", "sample", "child")).toBe(true);
   });
 
   it("exposes feature-owned settings only while their module and feature are enabled", async () => {

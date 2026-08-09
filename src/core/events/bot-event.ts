@@ -14,5 +14,11 @@ type TypedBotEvent<Name extends keyof ClientEvents> = Omit<BotEvent, "name" | "e
 };
 
 export function defineEvent<Name extends keyof ClientEvents>(event: TypedBotEvent<Name>): BotEvent {
-  return event as unknown as BotEvent;
+  return {
+    name: event.name,
+    ...(event.once === undefined ? {} : { once: event.once }),
+    // Discord emits the argument tuple associated with `name`; this adapter is
+    // the single runtime boundary between its keyed event map and loaded events.
+    execute: (client, ...args) => event.execute(client, ...args as ClientEvents[Name]),
+  };
 }

@@ -26,4 +26,11 @@ describe("modular platform migration", () => {
     expect(sql).toContain("'moderation-log'");
     expect(sql).not.toMatch(/TRUNCATE|DROP DATABASE/i);
   });
+  it("preserves existing feature behavior when safer installation defaults take effect", async () => {
+    const sql = await readFile(new URL("../drizzle/0005_safe_feature_defaults.sql", import.meta.url), "utf8");
+    expect(sql).toContain('FROM "guild_modules"');
+    expect(sql).toContain("('purge')");
+    expect(sql).toContain('ON CONFLICT ("guild_id", "module_id", "feature_id") DO NOTHING');
+    expect(sql).not.toMatch(/TRUNCATE|DROP DATABASE|DELETE FROM/i);
+  });
 });

@@ -3,7 +3,7 @@ import { moderationCommands } from "./commands/index.js";
 import { handleModerationComponent } from "./interactions/component-router.js";
 import { moderationManifest } from "./manifest.js";
 import { hasModerationAccess } from "./permissions/authorization.js";
-import { resetModerationGuild } from "./repositories/case-repository.js";
+import { resetModerationGuild } from "./repositories/reset-repository.js";
 import { moderationConfigView } from "./ui/config/dashboard.js";
 import nativeAuditHandler from "./audit/native-audit-handler.js";
 
@@ -16,6 +16,7 @@ export const moderationModule = {
     return hasModerationAccess(client, interaction.member, nativePermission);
   },
   isConfigurationComponent: (action) => action.startsWith("config_") || action.startsWith("type_") || action.startsWith("modal_config_") || action.startsWith("modal_type_"),
+  componentAcknowledgement: (action) => ["case_evidence_add", "case_evidence_edit", "type_add", "type_edit", "config_field"].includes(action) ? "modal" : "defer-update",
   featureForComponent(action) {
     if (action === "confirm" || action === "cancel") return undefined;
     if (action.startsWith("config_") || action.startsWith("type_") || action.startsWith("modal_config_") || action.startsWith("modal_type_")) return undefined;

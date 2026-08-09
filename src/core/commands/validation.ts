@@ -1,4 +1,4 @@
-import { ApplicationCommandOptionType, type RESTPostAPIApplicationCommandsJSONBody } from "discord.js";
+import { ApplicationCommandOptionType } from "discord.js";
 
 import type { ModuleRegistry } from "../modules/registry.js";
 import type { BotCommand } from "./command.js";
@@ -6,7 +6,7 @@ import type { BotCommand } from "./command.js";
 export function validateCommands(commands: readonly BotCommand[], modules: ModuleRegistry): void {
   const names = new Set<string>();
   for (const command of commands) {
-    const json = command.data.toJSON() as RESTPostAPIApplicationCommandsJSONBody;
+    const json = command.data.toJSON();
     if (!json.name || typeof command.execute !== "function") throw new Error("A command definition is missing a name or handler.");
     if (names.has(json.name)) throw new Error(`Duplicate command name: ${json.name}`);
     names.add(json.name);
@@ -17,7 +17,7 @@ export function validateCommands(commands: readonly BotCommand[], modules: Modul
       const featureId = command.requirements.featureId;
       if (featureId && !module.manifest.features.some((feature) => feature.id === featureId)) throw new Error(`Command ${json.name} references unknown feature ${moduleId}.${featureId}.`);
     }
-    validateOptionOrder((json.options ?? []) as CommandOption[], json.name);
+    if ("options" in json) validateOptionOrder(json.options ?? [], json.name);
   }
 }
 

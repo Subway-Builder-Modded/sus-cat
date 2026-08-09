@@ -6,7 +6,7 @@ import { defineEvent } from "../bot-event.js";
 export default defineEvent({
   name: Events.GuildDelete,
   async execute(client, guild) {
-    await client.platform.settings.repository.markInactive(guild.id);
+    await client.platform.settings.markGuildInactive(guild.id);
     logger.info("Guild marked inactive; history preserved", { guildId: guild.id });
   },
 });

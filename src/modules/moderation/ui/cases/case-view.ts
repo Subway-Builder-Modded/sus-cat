@@ -36,13 +36,13 @@ export function timelineView(input: { case: ModerationUserCase; entries: Moderat
     const type = entry.customTypeName ? `${entry.customTypeEmoji ?? "🏷️"} **${entry.customTypeName}** • ` : "";
     return `${visual.emoji} ${type}**${visual.label}**\nModerator: <@${entry.actorId}> • <t:${Math.floor(entry.createdAt.getTime() / 1000)}:F>${entry.durationMs ? `\nDuration: ${formatDuration(entry.durationMs)}` : ""}${entry.reason ? `\nReason: ${entry.reason}` : ""}`;
   }).join("\n\n") || "No case entries yet.";
-  const embed = new EmbedBuilder().setColor(0x5865f2).setTitle(`Case #${input.case.caseNumber} → Timeline`).setDescription(description).setFooter({ text: `Page ${input.page} of ${input.pages}` });
+  const embed = new EmbedBuilder().setColor(0x5865f2).setTitle(`Case #${input.case.caseNumber} --> Timeline`).setDescription(description).setFooter({ text: `Page ${input.page} of ${input.pages}` });
   return { embeds: [embed], components: [pagination("case_timeline", input.actorId, input.case.id, input.page, input.pages), backRow("case_number", input.actorId, String(input.case.caseNumber))], allowedMentions: { parse: [] } };
 }
 
 export function evidenceView(input: { case: ModerationUserCase; items: ModerationEvidence[]; index: number; actorId: string }) {
   const item = input.items[input.index];
-  const embed = new EmbedBuilder().setColor(0x5865f2).setTitle(`Case #${input.case.caseNumber} → Evidence`).setDescription(item ? `**Evidence**\n${item.evidence}\n\n**Description**\n${item.description ?? "None"}\n\n**Result**\n${item.result === "none" ? "None" : actionPresentation[item.result].label}\n\n**Added by**\n<@${item.addedById}> • <t:${Math.floor(item.createdAt.getTime() / 1000)}:F>` : "No evidence has been added to this case.");
+  const embed = new EmbedBuilder().setColor(0x5865f2).setTitle(`Case #${input.case.caseNumber} --> Evidence`).setDescription(item ? `**Evidence**\n${item.evidence}\n\n**Description**\n${item.description ?? "None"}\n\n**Result**\n${item.result === "none" ? "None" : actionPresentation[item.result].label}\n\n**Added by**\n<@${item.addedById}> • <t:${Math.floor(item.createdAt.getTime() / 1000)}:F>` : "No evidence has been added to this case.");
   if (item) embed.setFooter({ text: `Evidence ${input.index + 1} of ${input.items.length}` });
   const controls = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(componentId("case_evidence_page", input.actorId, input.case.id, String(Math.max(0, input.index - 1)))).setLabel("Previous").setStyle(ButtonStyle.Secondary).setDisabled(!item || input.index === 0),

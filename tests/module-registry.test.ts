@@ -21,4 +21,12 @@ describe("module registry", () => {
     expect(() => new ModuleRegistry().register(module(manifest("bad", [{ id: "child", name: "Child", description: "", defaultEnabled: true, dependencies: ["missing"] }])))).toThrow("Unknown feature dependency");
     expect(() => new ModuleRegistry().register(module(manifest("bad", [{ id: "a", name: "A", description: "", defaultEnabled: true, dependencies: ["b"] }, { id: "b", name: "B", description: "", defaultEnabled: true, dependencies: ["a"] }])))).toThrow("Cyclic feature dependency");
   });
+
+  it("validates custom configuration page identities and feature ownership", () => {
+    const view = () => ({ embeds: [], components: [] });
+    const value = manifest("example", [{ id: "base", name: "Base", description: "base", defaultEnabled: true }]);
+    const registry = new ModuleRegistry();
+    expect(() => registry.register({ ...module(value), configurationPages: [{ id: "custom", label: "Custom", description: "Custom", featureId: "missing", view }] })).toThrow("Unknown configuration page feature");
+    expect(() => new ModuleRegistry().register({ ...module(value), configurationPages: [{ id: "custom", label: "Custom", description: "Custom", view }, { id: "custom", label: "Duplicate", description: "Duplicate", view }] })).toThrow("Duplicate configuration option");
+  });
 });

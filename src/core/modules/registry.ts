@@ -5,6 +5,7 @@ export class ModuleRegistry {
 
   register(module: BotModule): void {
     validateManifest(module.manifest);
+    validateConfigurationPages(module);
     if (this.#modules.has(module.manifest.id)) throw new Error(`Duplicate module ID: ${module.manifest.id}`);
     this.#modules.set(module.manifest.id, module);
   }
@@ -29,6 +30,18 @@ export class ModuleRegistry {
       visited.add(id);
     };
     for (const module of this.all()) visit(module.manifest.id);
+  }
+}
+
+function validateConfigurationPages(module: BotModule): void {
+  const pageIds = new Set<string>();
+  const configKeys = new Set(module.manifest.config.map((definition) => definition.key));
+  const featureIds = new Set(module.manifest.features.map((feature) => feature.id));
+  for (const page of module.configurationPages ?? []) {
+    if (!/^[a-z][a-z0-9-]*$/.test(page.id)) throw new Error(`Invalid configuration page ID: ${module.manifest.id}.${page.id}`);
+    if (pageIds.has(page.id) || configKeys.has(page.id)) throw new Error(`Duplicate configuration option: ${module.manifest.id}.${page.id}`);
+    if (page.featureId && !featureIds.has(page.featureId)) throw new Error(`Unknown configuration page feature: ${module.manifest.id}.${page.id} -> ${page.featureId}`);
+    pageIds.add(page.id);
   }
 }
 

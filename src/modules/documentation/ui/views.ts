@@ -7,7 +7,7 @@ import type { IndexedDocument } from "../services/indexer.js";
 
 export function documentationHome(registry: ModuleRegistry, actorId: string, enabledModuleIds?: readonly string[]) {
   const visible = enabledModuleIds ? registry.manifests().filter((module) => enabledModuleIds.includes(module.id)) : registry.manifests();
-  const modules = visible.map((module) => `${module.icon} **${module.name}** — ${module.description}`).join("\n");
+  const modules = visible.map((module) => `${module.icon} **${module.name}** - ${module.description}`).join("\n");
   const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(componentId("module", "documentation", "category", actorId, "Getting_Started")).setLabel("Getting Started").setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(componentId("module", "documentation", "modules", actorId)).setLabel("Modules").setStyle(ButtonStyle.Secondary),
@@ -24,6 +24,6 @@ export function documentList(title: string, documents: readonly IndexedDocument[
 }
 
 export function commandList(registry: ModuleRegistry, actorId: string) {
-  const lines = registry.all().flatMap((module) => module.commands.map((command) => `**/${command.data.name}** — ${module.manifest.name}${command.requirements.featureId ? ` · ${command.requirements.featureId}` : ""}`));
+  const lines = registry.all().flatMap((module) => module.commands.map((command) => `**/${command.data.name}** - ${module.manifest.name}${command.requirements.featureId ? ` · ${command.requirements.featureId}` : ""}`));
   return { embeds: [new EmbedBuilder().setColor(ui.colors.primary).setTitle("Command Reference").setDescription(lines.join("\n").slice(0, 4_000) || "No module commands are registered.")], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(componentId("module", "documentation", "home", actorId)).setLabel("Back").setStyle(ButtonStyle.Secondary))] };
 }

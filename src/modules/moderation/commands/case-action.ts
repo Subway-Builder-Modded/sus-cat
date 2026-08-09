@@ -6,7 +6,7 @@ import { moderation } from "../interactions/context.js";
 import { MAX_TIMEOUT_MS, parseDuration } from "../utils/duration.js";
 
 export const caseActionChoices = [
-  { name: "None — record only", value: "none" },
+  { name: "None - record only", value: "none" },
   { name: "Warning", value: "warn" },
   { name: "Timeout", value: "timeout" },
   { name: "Kick", value: "kick" },

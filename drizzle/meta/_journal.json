@@ -43,6 +43,13 @@
       "when": 1786233600000,
       "tag": "0005_safe_feature_defaults",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786237200000,
+      "tag": "0006_remove_rules_url",
+      "breakpoints": true
     }
   ]
 }

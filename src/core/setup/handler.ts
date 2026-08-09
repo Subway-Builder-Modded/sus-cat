@@ -6,7 +6,7 @@ import { requireComponentValue } from "../interactions/custom-id.js";
 import { respond, updateComponent, type SafeReplyOptions } from "../interactions/response.js";
 import { requireConfigurationAccess } from "../permissions/configuration.js";
 import { successEmbed } from "../ui/embeds.js";
-import { botAdminRolesView, featureSelectionView, moduleSelectionView, reviewView, setupConfigurationView, setupFieldEditor, welcomeView } from "./views.js";
+import { botAdminRolesView, featureSelectionView, hasSetupConfiguration, moduleSelectionView, reviewView, setupConfigurationView, setupFieldEditor, welcomeView } from "./views.js";
 
 export async function handleSetupComponent(client: BotClient, interaction: RoutedComponentInteraction, action: string, parts: readonly string[]): Promise<void> {
   if (!interaction.inCachedGuild()) throw new Error("Setup is only available in a server.");
@@ -50,9 +50,18 @@ export async function handleSetupComponent(client: BotClient, interaction: Route
     const moduleId = requireComponentValue(parts, 1);
     const enabled = await enabledModules(client, interaction.guildId);
     const previous = enabled[enabled.findIndex((module) => module.manifest.id === moduleId) - 1];
-    return update(interaction, previous ? await setupConfigurationView(settings, modules, interaction.guildId, previous.manifest.id, actorId) : await moduleSelectionView(settings, modules, interaction.guildId, actorId));
+    if (!previous) return update(interaction, await moduleSelectionView(settings, modules, interaction.guildId, actorId));
+    return update(interaction, await moduleExitView(client, interaction.guildId, previous.manifest.id, actorId));
   }
-  if (action === "continue_features") return update(interaction, await setupConfigurationView(settings, modules, interaction.guildId, requireComponentValue(parts, 1), actorId));
+  if (action === "continue_features") {
+    const currentId = requireComponentValue(parts, 1);
+    if (await hasSetupConfiguration(settings, modules, interaction.guildId, currentId)) {
+      return update(interaction, await setupConfigurationView(settings, modules, interaction.guildId, currentId, actorId));
+    }
+    const enabled = await enabledModules(client, interaction.guildId);
+    const next = enabled[enabled.findIndex((module) => module.manifest.id === currentId) + 1];
+    return update(interaction, next ? await featureSelectionView(settings, modules, interaction.guildId, next.manifest.id, actorId) : await review(client, interaction.guild, actorId));
+  }
   if (action === "config_home") return update(interaction, await setupConfigurationView(settings, modules, interaction.guildId, requireComponentValue(parts, 1), actorId));
   if (action === "config_field" && interaction.isStringSelectMenu()) {
     const moduleId = requireComponentValue(parts, 1), key = requireComponentValue(interaction.values, 0), editor = await setupFieldEditor(settings, modules, interaction.guildId, moduleId, key, actorId);
@@ -99,14 +108,15 @@ export async function handleSetupComponent(client: BotClient, interaction: Route
   if (action === "back_review") {
     const enabled = await enabledModules(client, interaction.guildId);
     const previous = enabled.at(-1);
-    return update(interaction, previous ? await setupConfigurationView(settings, modules, interaction.guildId, previous.manifest.id, actorId) : await moduleSelectionView(settings, modules, interaction.guildId, actorId));
+    if (!previous) return update(interaction, await moduleSelectionView(settings, modules, interaction.guildId, actorId));
+    return update(interaction, await moduleExitView(client, interaction.guildId, previous.manifest.id, actorId));
   }
   if (action === "finish") {
     const permissionIssues = await setupPermissionIssues(interaction.guild, client);
     if (permissionIssues.length) throw new Error(`Missing bot permissions: ${permissionIssues.join("; ")}`);
     await validateSelectedChannels(client, interaction.guildId);
     await settings.completeSetup(interaction.guildId, actorId);
-    await update(interaction, { embeds: [successEmbed("Setup complete", "This server is configured. Enabled features are available immediately; use `/config` to make changes.")], components: [] });
+    await update(interaction, { embeds: [successEmbed("Setup Complete", "This server is configured. Enabled features are available immediately. You can use `/config` to make changes.")], components: [] });
   }
 }
 
@@ -118,6 +128,13 @@ async function enabledModules(client: BotClient, guildId: string) {
 
 async function review(client: BotClient, guild: Guild, actorId: string) {
   return reviewView(client.platform.settings, client.platform.modules, guild.id, actorId, await setupPermissionIssues(guild, client));
+}
+
+async function moduleExitView(client: BotClient, guildId: string, moduleId: string, actorId: string) {
+  const { settings, modules } = client.platform;
+  return await hasSetupConfiguration(settings, modules, guildId, moduleId)
+    ? await setupConfigurationView(settings, modules, guildId, moduleId, actorId)
+    : await featureSelectionView(settings, modules, guildId, moduleId, actorId);
 }
 
 async function validateSelectedChannels(client: BotClient, guildId: string): Promise<void> {
@@ -141,7 +158,7 @@ async function botPermissionIssues(guild: Guild, client: BotClient): Promise<str
   const issues = new Set<string>();
   for (const module of client.modules.all()) if (await client.platform.settings.isModuleEnabled(guild.id, module.manifest.id)) {
     for (const feature of module.manifest.features) if (await client.platform.settings.isFeatureEnabled(guild.id, module.manifest.id, feature.id)) {
-      for (const permission of feature.requiredBotPermissions ?? []) if (!me.permissions.has(permission)) issues.add(`${new PermissionsBitField(permission).toArray().join(", ")} — required by ${module.manifest.name} → ${feature.name}`);
+      for (const permission of feature.requiredBotPermissions ?? []) if (!me.permissions.has(permission)) issues.add(`${new PermissionsBitField(permission).toArray().join(", ")} - required by ${module.manifest.name} --> ${feature.name}`);
     }
   }
   return [...issues];
@@ -158,7 +175,7 @@ async function setupPermissionIssues(guild: Guild, client: BotClient): Promise<s
       if (typeof channelId !== "string" || !channelId) continue;
       const channel = await guild.channels.fetch(channelId).catch(() => undefined);
       if (!channel?.isSendable()) issues.push(`${definition.label} no longer exists or cannot receive messages`);
-      else if (!channel.permissionsFor(botMember)?.has(["ViewChannel", "SendMessages", "EmbedLinks"])) issues.push(`View Channel, Send Messages, and Embed Links — required in ${definition.label}`);
+      else if (!channel.permissionsFor(botMember)?.has(["ViewChannel", "SendMessages", "EmbedLinks"])) issues.push(`View Channel, Send Messages, and Embed Links - required in ${definition.label}`);
     }
   }
   return issues;

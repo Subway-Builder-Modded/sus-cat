@@ -33,4 +33,10 @@ describe("modular platform migration", () => {
     expect(sql).toContain('ON CONFLICT ("guild_id", "module_id", "feature_id") DO NOTHING');
     expect(sql).not.toMatch(/TRUNCATE|DROP DATABASE|DELETE FROM/i);
   });
+  it("removes the retired Rules URL setting from persisted moderation configuration", async () => {
+    const sql = await readFile(new URL("../drizzle/0006_remove_rules_url.sql", import.meta.url), "utf8");
+    expect(sql).toContain("\"config\" - 'rulesUrl'");
+    expect(sql).toContain("\"module_id\" = 'moderation'");
+    expect(sql).not.toMatch(/TRUNCATE|DROP DATABASE|DROP TABLE/i);
+  });
 });

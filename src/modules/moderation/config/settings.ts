@@ -12,7 +12,6 @@ export class ModerationSettings {
       auditLogChannelId: stringOrNull(config.auditLogChannelId),
       caseCategoryId: stringOrNull(config.caseCategoryId),
       moderatorRoleIds: stringArray(config.moderatorRoleIds),
-      rulesUrl: stringOrNull(config.rulesUrl),
       purgeConfirmationThreshold: integer(config.purgeConfirmationThreshold, 25),
       purgeScanLimit: integer(config.purgeScanLimit, 1000),
       auditScope: config.auditScope === "full" ? "full" : "moderation",

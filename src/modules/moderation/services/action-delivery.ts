@@ -21,14 +21,13 @@ export interface PublishedActionInput {
 }
 
 export interface ActionDelivery {
-  notifyUser(user: User, input: { action: ModerationAction; guild: Guild; reason: string; durationMs?: number; expiresAt?: Date; rulesUrl?: string | null }): Promise<boolean>;
+  notifyUser(user: User, input: { action: ModerationAction; guild: Guild; reason: string; durationMs?: number; expiresAt?: Date }): Promise<boolean>;
   publish(guild: Guild, auditLogChannelId: string, input: PublishedActionInput): Promise<void>;
 }
 
-export async function notifyUserBestEffort(settings: ModerationSettings, delivery: ActionDelivery, user: User, input: Parameters<ActionDelivery["notifyUser"]>[1]): Promise<boolean> {
+export async function notifyUserBestEffort(delivery: ActionDelivery, user: User, input: Parameters<ActionDelivery["notifyUser"]>[1]): Promise<boolean> {
   try {
-    const config = await settings.get(input.guild.id);
-    return await delivery.notifyUser(user, { ...input, rulesUrl: config.rulesUrl });
+    return await delivery.notifyUser(user, input);
   } catch (error: unknown) {
     logger.warn("Unable to deliver moderation notification", { guildId: input.guild.id, userId: user.id, action: input.action, error: toError(error).message });
     return false;

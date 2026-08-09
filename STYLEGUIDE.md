@@ -727,13 +727,13 @@ unless the concept is genuinely reusable by any module.
 The dependency direction should generally be:
 
 ```text
-modules → core
+modules --> core
 ```
 
 not:
 
 ```text
-core → moderation
+core --> moderation
 ```
 
 Core exposes contracts.
@@ -2056,10 +2056,10 @@ Do not maintain multiple definitions of the same information.
 Examples:
 
 ```text
-module feature list → manifest
-action colors → action presentation registry
-guild configuration → PostgreSQL
-command requirements → command definition
+module feature list --> manifest
+action colors --> action presentation registry
+guild configuration --> PostgreSQL
+command requirements --> command definition
 ```
 
 If the same list appears in three places, redesign it.

@@ -111,7 +111,7 @@ export class ModerationService {
   }
 
   private async notify(guild: Guild, user: User, action: ModerationAction, reason: string, options: { durationMs?: number; expiresAt?: Date }): Promise<boolean> {
-    return notifyUserBestEffort(this.configs, this.delivery, user, { action, guild, reason, ...options });
+    return notifyUserBestEffort(this.delivery, user, { action, guild, reason, ...options });
   }
 
   private async publish(guild: Guild, action: ModerationAction | "nickname", actor: GuildMember, target: User, details: Omit<PublishedActionInput, "action" | "actor" | "target">): Promise<void> {

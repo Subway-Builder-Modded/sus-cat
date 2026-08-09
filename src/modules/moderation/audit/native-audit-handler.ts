@@ -40,5 +40,5 @@ export default defineEvent({
 export function shouldIncludeAuditEvent(scope: "moderation" | "full", action: AuditLogEvent): boolean { return scope === "full" || moderationEvents.has(action); }
 
 function printableExtra(entry: GuildAuditLogsEntry): string | number | null { const value = entry.extra; return typeof value === "string" || typeof value === "number" ? value : null; }
-function renderChanges(changes: Record<string, { old: unknown; new: unknown }>): string { return Object.entries(changes).slice(0, 10).map(([key, value]) => `**${key}**: ${brief(value.old)} → ${brief(value.new)}`).join("\n").slice(0, 1024); }
+function renderChanges(changes: Record<string, { old: unknown; new: unknown }>): string { return Object.entries(changes).slice(0, 10).map(([key, value]) => `**${key}**: ${brief(value.old)} --> ${brief(value.new)}`).join("\n").slice(0, 1024); }
 function brief(value: unknown): string { if (value == null) return "None"; if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value).slice(0, 120); return "Updated"; }

@@ -5,8 +5,9 @@ import { componentId, requireComponentValue } from "../interactions/custom-id.js
 import { respond, updateComponent, type SafeReplyOptions } from "../interactions/response.js";
 import type { RoutedComponentInteraction } from "../interactions/types.js";
 import { requireConfigurationAccess } from "../permissions/configuration.js";
-import { successEmbed, warningEmbed } from "../ui/embeds.js";
-import { configurationHome, featureConfigurationView, fieldEditor, moduleConfigurationView, settingsPicker } from "./views.js";
+import { warningEmbed } from "../ui/embeds.js";
+import { ui } from "../ui/theme.js";
+import { configurationHome, featureConfigurationView, fieldEditor, moduleConfigurationTitle, moduleConfigurationView, settingsPicker } from "./views.js";
 
 export async function handleConfigComponent(client: BotClient, interaction: RoutedComponentInteraction, action: string, parts: readonly string[]): Promise<void> {
   if (!interaction.inCachedGuild()) throw new Error("Configuration is only available in a server.");
@@ -40,12 +41,24 @@ export async function handleConfigComponent(client: BotClient, interaction: Rout
   if (action === "field" && interaction.isStringSelectMenu()) {
     const moduleId = requireComponentValue(parts, 1);
     const key = requireComponentValue(interaction.values, 0);
+    const module = modules.require(moduleId);
+    const page = module.configurationPages?.find((candidate) => candidate.id === key);
+    if (page) {
+      if (page.featureId && !await settings.isFeatureEnabled(interaction.guildId, moduleId, page.featureId)) throw new Error("Enable the related feature before opening this setting.");
+      return update(interaction, await page.view(settings, interaction.guildId, actorId));
+    }
     await settings.requireConfigAvailable(interaction.guildId, moduleId, key);
-    const editor = fieldEditor(modules, moduleId, key, actorId);
-    if (editor) return update(interaction, editor);
+    return update(interaction, await fieldEditor(settings, modules, interaction.guildId, moduleId, key, actorId));
+  }
+  if (action === "edit_field" && interaction.isButton()) {
+    const moduleId = requireComponentValue(parts, 1);
+    const key = requireComponentValue(parts, 2);
+    await settings.requireConfigAvailable(interaction.guildId, moduleId, key);
     const definition = requireDefinition(modules, moduleId, key);
-    const modal = new ModalBuilder().setCustomId(componentId("core", "config", "modal_field", actorId, moduleId, key)).setTitle(definition.label.slice(0, 45)).addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("value").setLabel(definition.label.slice(0, 45)).setStyle(definition.type === "string-list" ? TextInputStyle.Paragraph : TextInputStyle.Short).setRequired(Boolean(definition.required)).setMaxLength(1_000)));
-    if (!interaction.isStringSelectMenu()) return;
+    const current = (await settings.getModuleConfig(interaction.guildId, moduleId))[key];
+    const input = new TextInputBuilder().setCustomId("value").setLabel(definition.label.slice(0, 45)).setStyle(definition.type === "string-list" ? TextInputStyle.Paragraph : TextInputStyle.Short).setRequired(await settings.isConfigRequired(interaction.guildId, moduleId, key)).setMaxLength(1_000);
+    if (current !== null && current !== undefined && current !== "") input.setValue((Array.isArray(current) ? current.join("\n") : String(current)).slice(0, 1_000));
+    const modal = new ModalBuilder().setCustomId(componentId("core", "config", "modal_field", actorId, moduleId, key)).setTitle(definition.label.slice(0, 45)).addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
     await interaction.showModal(modal);
     return;
   }
@@ -58,7 +71,7 @@ export async function handleConfigComponent(client: BotClient, interaction: Rout
     else if (interaction.isChannelSelectMenu() || interaction.isRoleSelectMenu() || interaction.isStringSelectMenu()) value = definition.type.endsWith("-list") ? interaction.values : interaction.values[0] ?? null;
     else return;
     await settings.setConfig(interaction.guildId, moduleId, key, value, actorId);
-    return update(interaction, await moduleConfigurationView(settings, modules, interaction.guildId, moduleId, actorId));
+    return update(interaction, await fieldEditor(settings, modules, interaction.guildId, moduleId, key, actorId));
   }
   if (action === "modal_field" && interaction.isModalSubmit()) {
     const moduleId = requireComponentValue(parts, 1), key = requireComponentValue(parts, 2);
@@ -67,18 +80,14 @@ export async function handleConfigComponent(client: BotClient, interaction: Rout
     const raw = interaction.fields.getTextInputValue("value");
     const value = definition.type === "integer" || definition.type === "duration" ? Number(raw) : definition.type === "string-list" ? raw.split(/[,\n]/).map((item) => item.trim()).filter(Boolean) : raw;
     await settings.setConfig(interaction.guildId, moduleId, key, value, actorId);
-    await respond(interaction, { embeds: [successEmbed("Configuration saved", `${definition.label} was updated.`)] });
+    const module = modules.require(moduleId);
+    await respond(interaction, { embeds: [new EmbedBuilder().setColor(ui.colors.success).setTitle(moduleConfigurationTitle(module.manifest, "Settings", definition.label)).setDescription(`${definition.label} was updated.`)] });
     return;
-  }
-  if (action === "audit") {
-    const events = await settings.recentAudit(interaction.guildId);
-    const body = events.map((event) => `<t:${Math.floor(event.createdAt.getTime() / 1_000)}:R> <@${event.actorId}> • **${event.moduleId}** • ${event.featureId ? `${event.featureId} • ` : ""}${event.key}`).join("\n") || "No configuration changes have been recorded.";
-    return update(interaction, { embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle("Recent Configuration Changes").setDescription(body)], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(componentId("core", "config", "home", actorId)).setLabel("Back").setStyle(ButtonStyle.Secondary))] });
   }
   if (action === "reset_prompt") return update(interaction, { embeds: [warningEmbed("Reset options", "Use a module's scoped reset command when you only need to clear that module's data. Use `/resetsetup` for the transactional full reset of setup, configuration, and all module-owned guild data.")], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(componentId("core", "config", "home", actorId)).setLabel("Back").setStyle(ButtonStyle.Secondary))] });
   if (action === "reset_module_prompt") {
     const moduleId = requireComponentValue(parts, 1), module = modules.require(moduleId);
-    return update(interaction, { embeds: [warningEmbed(`Reset ${module.manifest.name}?`, "Its switches and settings will return to manifest defaults. Historical module records are preserved.")], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(componentId("core", "config", "reset_module_confirm", actorId, moduleId)).setLabel("Reset Module").setStyle(ButtonStyle.Danger), new ButtonBuilder().setCustomId(componentId("core", "config", "module_direct", actorId, moduleId)).setLabel("Cancel").setStyle(ButtonStyle.Secondary))] });
+    return update(interaction, { embeds: [new EmbedBuilder().setColor(ui.colors.warning).setTitle(moduleConfigurationTitle(module.manifest, "Reset Module")).setDescription("Its switches and settings will return to manifest defaults. Historical module records are preserved.")], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(componentId("core", "config", "reset_module_confirm", actorId, moduleId)).setLabel("Reset Module").setStyle(ButtonStyle.Danger), new ButtonBuilder().setCustomId(componentId("core", "config", "module_direct", actorId, moduleId)).setLabel("Cancel").setStyle(ButtonStyle.Secondary))] });
   }
   if (action === "reset_module_confirm") {
     const moduleId = requireComponentValue(parts, 1);

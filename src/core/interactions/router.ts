@@ -49,6 +49,6 @@ export async function routeComponent(client: BotClient, interaction: Interaction
 
 function coreAcknowledgement(owner: string, action: string): "defer-update" | "modal" {
   if (owner === "setup" && action === "config_field") return "modal";
-  if (owner === "config" && action === "field") return "modal";
+  if (owner === "config" && action === "edit_field") return "modal";
   return "defer-update";
 }

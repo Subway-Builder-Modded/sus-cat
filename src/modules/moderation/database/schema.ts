@@ -142,7 +142,6 @@ export interface ModerationConfig {
   readonly auditLogChannelId: string | null;
   readonly caseCategoryId: string | null;
   readonly moderatorRoleIds: string[];
-  readonly rulesUrl: string | null;
   readonly purgeConfirmationThreshold: number;
   readonly purgeScanLimit: number;
   readonly auditScope: "moderation" | "full";

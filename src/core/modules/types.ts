@@ -30,6 +30,14 @@ export interface DocumentationPage {
   readonly keywords?: readonly string[];
 }
 
+export interface ModuleConfigurationPage {
+  readonly id: string;
+  readonly label: string;
+  readonly description: string;
+  readonly featureId?: string;
+  view(settings: import("../config/service.js").GuildConfigService, guildId: string, actorId: string): Promise<import("../interactions/response.js").SafeReplyOptions> | import("../interactions/response.js").SafeReplyOptions;
+}
+
 export interface ModuleManifest {
   readonly id: string;
   readonly name: string;
@@ -48,12 +56,12 @@ export interface BotModule {
   readonly manifest: ModuleManifest;
   readonly commands: readonly BotCommand[];
   readonly events?: readonly BotEvent[];
+  readonly configurationPages?: readonly ModuleConfigurationPage[];
   authorizeCommand?(client: BotClient, interaction: import("../commands/command.js").BotCommandInteraction, nativePermission: bigint): Promise<boolean>;
   isConfigurationComponent?(action: string): boolean;
   componentAcknowledgement?(action: string): "defer-update" | "modal";
   featureForComponent?(action: string): string | undefined;
   handleComponent?(client: BotClient, interaction: RoutedComponentInteraction, action: string, parts: readonly string[]): Promise<void>;
-  configurationView?(settings: import("../config/service.js").GuildConfigService, guildId: string, actorId: string): Promise<import("../interactions/response.js").SafeReplyOptions>;
   initialize?(client: BotClient): Promise<void> | void;
   shutdown?(): Promise<void> | void;
   resetGuild?(guildId: string, transaction: DatabaseTransaction): Promise<void>;

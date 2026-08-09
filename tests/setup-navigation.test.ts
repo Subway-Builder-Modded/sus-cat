@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ModuleRegistry } from "../src/core/modules/registry.js";
+import { handleSetupComponent } from "../src/core/setup/handler.js";
 import { featureSelectionView, moduleSelectionView, setupConfigurationView, setupFieldEditor } from "../src/core/setup/views.js";
 import { parseComponentId } from "../src/core/interactions/custom-id.js";
 
@@ -29,8 +30,8 @@ describe("setup selection and navigation", () => {
     const actions = view.components.flatMap((row) => row.components.map((component) => componentAction(component.toJSON().custom_id)));
     expect(actions).toContain("config_field");
     const options = view.components[0]?.components[0]?.toJSON().options;
-    expect(options).toEqual(expect.arrayContaining([expect.objectContaining({ label: "Scope *", value: "scope" }), expect.objectContaining({ label: "Threshold", value: "threshold" })]));
-    expect(view.embeds[0]?.toJSON().description).toContain("**Scope** *");
+    expect(options).toEqual(expect.arrayContaining([expect.objectContaining({ label: "Scope*", value: "scope" }), expect.objectContaining({ label: "Threshold", value: "threshold" })]));
+    expect(view.embeds[0]?.toJSON().description).toContain("**Scope***");
     expect(view.components.length).toBeLessThanOrEqual(5);
   });
   it("provides the type-appropriate editor from the full setup picker", async () => {
@@ -46,6 +47,34 @@ describe("setup selection and navigation", () => {
     const actions = view.components.flatMap((row) => row.components.map((component) => componentAction(component.toJSON().custom_id)));
     expect(actions).not.toContain("config_field");
     expect(actions).toContain("continue_config");
+  });
+  it("skips the configuration embed when a module has no available settings", async () => {
+    const emptyModule = { manifest: { ...module.manifest, id: "empty", name: "Empty", config: [] }, commands: [] } as const;
+    const nextModule = { manifest: { ...module.manifest, id: "next", name: "Next" }, commands: [] } as const;
+    const setupRegistry = new ModuleRegistry();
+    setupRegistry.register(emptyModule);
+    setupRegistry.register(nextModule);
+    const update = vi.fn();
+    const settings = {
+      isModuleEnabled: vi.fn(async () => true),
+      isFeatureEnabled: vi.fn(async () => true),
+    };
+    const guild = { id: "guild", ownerId: "actor" };
+    const interaction = {
+      guild,
+      guildId: guild.id,
+      member: { id: "actor", guild },
+      user: { id: "actor" },
+      inCachedGuild: () => true,
+      isMessageComponent: () => true,
+      update,
+    };
+
+    await handleSetupComponent({ platform: { settings, modules: setupRegistry } } as never, interaction as never, "continue_features", ["actor", "empty"]);
+
+    expect(update).toHaveBeenCalledOnce();
+    expect(update.mock.calls[0]?.[0].embeds[0].toJSON().title).toBe("🧩 Next Features");
+    expect(settings.isConfigAvailable).toBeUndefined();
   });
 });
 

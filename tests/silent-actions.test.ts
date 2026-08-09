@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { moderationManifest } from "../src/modules/moderation/manifest.js";
 import { ModerationService } from "../src/modules/moderation/services/moderation-service.js";
 
 function fixture(silent: boolean, auditEnabled = true) {
@@ -8,7 +9,7 @@ function fixture(silent: boolean, auditEnabled = true) {
   const cases = { findEntryByIdempotency: vi.fn(), append };
   const receipts = { reserve: vi.fn(async () => true) };
   const audits = { record: audit };
-  const configs = { feature: vi.fn(async (_guild: string, feature: string) => feature === "cases" || feature === "user-notifications" || (feature === "audit-log" && auditEnabled)), get: vi.fn(async () => ({ rulesUrl: null, auditLogChannelId: null })) };
+  const configs = { feature: vi.fn(async (_guild: string, feature: string) => feature === "cases" || feature === "user-notifications" || (feature === "audit-log" && auditEnabled)), get: vi.fn(async () => ({ auditLogChannelId: null })) };
   const notifyUser = vi.fn(async () => true), delivery = { notifyUser, publish: vi.fn() };
   const ban = vi.fn(async () => undefined), kick = vi.fn(async () => undefined), timeout = vi.fn(async () => undefined);
   const roles = { highest: { comparePositionTo: () => 1 } };
@@ -21,6 +22,12 @@ function fixture(silent: boolean, auditEnabled = true) {
 }
 
 describe("silent moderation actions", () => {
+  it("does not expose or deliver a Rules URL setting", async () => {
+    const item = fixture(false);
+    await item.service.warn(item.context);
+    expect(moderationManifest.config.some((definition) => definition.key === "rulesUrl")).toBe(false);
+    expect(item.notifyUser.mock.calls[0]?.[1]).not.toHaveProperty("rulesUrl");
+  });
   it.each(["warn", "timeout", "kick", "ban"] as const)("performs silent %s without case entry or DM while retaining audit", async (action) => {
     const item = fixture(true);
     if (action === "warn") await item.service.warn(item.context);
